@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  # Backend service (FastAPI)
+  backend:
+    build: ./backend
+    container_name: alphanote-backend
+    restart: always
+    volumes:
+      # Mount data directory for SQLite persistence
+      - ./backend_data:/app/data
+    environment:
+      - DATABASE_PATH=/app/data/alphanote.db
+      - PROGRESS_PATH=/app/data/progress.json
+      - LOG_PATH=/app/data/update.log
+    networks:
+      - alphanote-network
+
+  # Frontend service (Nginx + Static files)
+  frontend:
+    build:
+      context: .
+      dockerfile: ./frontend/Dockerfile
+    container_name: alphanote-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - alphanote-network
+
+networks:
+  alphanote-network:
+    driver: bridge
