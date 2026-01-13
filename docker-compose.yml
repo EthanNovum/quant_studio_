@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Backend service (FastAPI)
   backend:
@@ -8,19 +6,25 @@ services:
     restart: always
     volumes:
       # Mount data directory for SQLite persistence
-      - ./backend_data:/app/data
+      - ./backend/data:/app/data
     environment:
+      # ✅ 正确写法 (只写容器里面的路径)：
       - DATABASE_PATH=/app/data/alphanote.db
+      
+      # 为了保险，建议加上这一行 (很多代码用这个变量)：
+      - DATABASE_URL=sqlite:////app/data/alphanote.db
+
       - PROGRESS_PATH=/app/data/progress.json
       - LOG_PATH=/app/data/update.log
     networks:
       - alphanote-network
+    
 
   # Frontend service (Nginx + Static files)
   frontend:
     build:
-      context: .
-      dockerfile: ./frontend/Dockerfile
+      context: ./frontend
+      dockerfile: Dockerfile
     container_name: alphanote-frontend
     restart: always
     ports:
@@ -33,3 +37,7 @@ services:
 networks:
   alphanote-network:
     driver: bridge
+
+
+volumes:
+  postgres_data:  # 这一行必须加在文件最底部，用于持久化保存数据
