@@ -13,7 +13,7 @@ class StockBase(BaseModel):
     name: str
     asset_type: str = "stock"
     industry: str | None = None
-    roe: float | None = None
+    roe: float | str | None = None
 
 
 class StockCreate(StockBase):
