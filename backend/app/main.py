@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import progress, quotes, screeners, stocks, transactions, watchlist
+from app.routers import progress, quotes, screeners, stocks, trades, transactions, watchlist
 
 app = FastAPI(
     title=settings.app_name,
@@ -25,6 +25,7 @@ app.add_middleware(
 app.include_router(stocks.router, prefix="/api/stocks", tags=["Stocks"])
 app.include_router(quotes.router, prefix="/api/stocks", tags=["Quotes"])
 app.include_router(transactions.router, prefix="/api", tags=["Transactions"])
+app.include_router(trades.router, prefix="/api/trades", tags=["Trades"])
 app.include_router(watchlist.router, prefix="/api/watchlist", tags=["Watchlist"])
 app.include_router(screeners.router, prefix="/api", tags=["Screeners"])
 app.include_router(progress.router, prefix="/api", tags=["Progress"])

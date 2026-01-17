@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import sqlite3
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -200,13 +201,84 @@ def update_stock_basic(conn: sqlite3.Connection, assets: pd.DataFrame):
     conn.commit()
 
 
-def update_daily_quotes(conn: sqlite3.Connection, symbols: list[str] | None = None, start_date: str = None, fetch_all: bool = False, limit: int = None):
-    """Update daily_quotes table with latest price data."""
+def fetch_stock_hist_with_retry(symbol: str, start_date: str, max_retries: int = 3) -> pd.DataFrame:
+    """Fetch stock historical data with retry logic and fallback APIs.
+
+    Tries multiple data sources:
+    1. stock_zh_a_hist (East Money) - primary source
+    2. stock_zh_a_daily (Netease 163) - fallback source
+    """
+    # Try East Money API first
+    for attempt in range(max_retries):
+        try:
+            df = ak.stock_zh_a_hist(symbol=symbol, period="daily", start_date=start_date, adjust="qfq")
+            if not df.empty:
+                return df
+        except KeyError as e:
+            logger.warning(f"KeyError for {symbol} (attempt {attempt + 1}): {e}")
+            # KeyError usually means symbol not found in code_id_dict, try fallback
+            break
+        except Exception as e:
+            logger.warning(f"East Money API failed for {symbol} (attempt {attempt + 1}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2 * (attempt + 1))  # Exponential backoff
+
+    # Try Netease 163 API as fallback
+    try:
+        # Netease uses different symbol format: 0000001 for SZ, 1600000 for SH
+        if symbol.startswith(("0", "3")):  # Shenzhen
+            netease_symbol = f"0{symbol}"
+        elif symbol.startswith(("6", "9")):  # Shanghai
+            netease_symbol = f"1{symbol}"
+        else:
+            netease_symbol = symbol
+
+        df = ak.stock_zh_a_daily(symbol=netease_symbol, start_date=start_date, adjust="qfq")
+        if not df.empty:
+            # Rename columns to match East Money format
+            column_mapping = {
+                "date": "日期",
+                "open": "开盘",
+                "high": "最高",
+                "low": "最低",
+                "close": "收盘",
+                "volume": "成交量",
+            }
+            # Check if columns need renaming (Netease might return English names)
+            if "date" in df.columns:
+                df = df.rename(columns={v: k for k, v in column_mapping.items() if v in df.columns})
+                df = df.rename(columns=column_mapping)
+            return df
+    except Exception as e:
+        logger.warning(f"Netease API also failed for {symbol}: {e}")
+
+    return pd.DataFrame()
+
+
+def get_latest_quote_date(cursor: sqlite3.Cursor, symbol: str) -> str | None:
+    """Get the latest quote date for a symbol from the database."""
+    cursor.execute(
+        "SELECT MAX(date) FROM daily_quotes WHERE symbol = ?",
+        (symbol,)
+    )
+    result = cursor.fetchone()
+    if result and result[0]:
+        return result[0]
+    return None
+
+
+def update_daily_quotes(conn: sqlite3.Connection, symbols: list[str] | None = None, start_date: str = None, fetch_all: bool = False, limit: int = None, force_full: bool = False):
+    """Update daily_quotes table with latest price data.
+
+    By default, uses incremental update (only fetches data after the latest date in DB).
+    Use force_full=True to force a full update from start_date.
+    """
     cursor = conn.cursor()
 
-    # Default to 1 year ago if no start_date provided
-    if start_date is None:
-        start_date = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
+    # Default start_date (used for new symbols with no existing data)
+    default_start_date = start_date
+    if default_start_date is None:
+        default_start_date = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
 
     # If no symbols provided, get from watchlist or all stocks
     if symbols is None:
@@ -244,20 +316,42 @@ def update_daily_quotes(conn: sqlite3.Connection, symbols: list[str] | None = No
                 symbol_types[s] = get_asset_type(s)
 
     total = len(symbol_types)
-    logger.info(f"Updating quotes for {total} assets from {start_date}")
+    today = datetime.now().strftime("%Y-%m-%d")
+    skipped = 0
+    updated = 0
+
+    logger.info(f"Processing {total} assets (incremental update, default start: {default_start_date})")
 
     for i, (symbol, asset_type) in enumerate(symbol_types.items()):
         write_progress(True, "daily", i + 1, total, symbol)
 
         try:
+            # Determine start_date for this symbol (incremental update)
+            if force_full:
+                symbol_start_date = default_start_date
+            else:
+                latest_date = get_latest_quote_date(cursor, symbol)
+                if latest_date:
+                    # Check if already up to date (latest date is today or yesterday)
+                    if latest_date >= today:
+                        skipped += 1
+                        continue
+                    # Start from the day after the latest date
+                    latest_dt = datetime.strptime(latest_date, "%Y-%m-%d")
+                    symbol_start_date = (latest_dt + timedelta(days=1)).strftime("%Y%m%d")
+                else:
+                    # No existing data, use default start_date
+                    symbol_start_date = default_start_date
+
             # Use different API based on asset type
             if asset_type == "etf":
-                df = ak.fund_etf_hist_em(symbol=symbol, period="daily", start_date=start_date, adjust="qfq")
+                df = ak.fund_etf_hist_em(symbol=symbol, period="daily", start_date=symbol_start_date, adjust="qfq")
             elif asset_type == "lof":
                 # LOF uses same API as ETF
-                df = ak.fund_etf_hist_em(symbol=symbol, period="daily", start_date=start_date, adjust="qfq")
+                df = ak.fund_etf_hist_em(symbol=symbol, period="daily", start_date=symbol_start_date, adjust="qfq")
             else:
-                df = ak.stock_zh_a_hist(symbol=symbol, period="daily", start_date=start_date, adjust="qfq")
+                # Use retry logic with fallback for stocks
+                df = fetch_stock_hist_with_retry(symbol=symbol, start_date=symbol_start_date)
 
             if df.empty:
                 continue
@@ -306,17 +400,28 @@ def update_daily_quotes(conn: sqlite3.Connection, symbols: list[str] | None = No
 
             if (i + 1) % 10 == 0:
                 conn.commit()
-                logger.info(f"Progress: {i + 1}/{total} assets updated")
+                logger.info(f"Progress: {i + 1}/{total} assets processed (updated: {updated}, skipped: {skipped})")
+
+            # Add delay to avoid rate limiting (especially for stock APIs)
+            if asset_type == "stock":
+                time.sleep(0.5)  # 500ms delay for stocks due to stricter rate limiting
+
+            updated += 1
 
         except Exception as e:
             logger.warning(f"Failed to update quotes for {symbol} ({asset_type}): {e}")
 
     conn.commit()
+    logger.info(f"Daily update completed: {updated} updated, {skipped} skipped (already up to date)")
 
 
-def run_daily_update(start_date: str = None, skip_trading_check: bool = False, fetch_all: bool = False, limit: int = None):
-    """Run daily update mode."""
-    logger.info("Starting daily update...")
+def run_daily_update(start_date: str = None, skip_trading_check: bool = False, fetch_all: bool = False, limit: int = None, force_full: bool = False):
+    """Run daily update mode.
+
+    By default, uses incremental update (only fetches new data since last update).
+    Use force_full=True to force a full update from start_date.
+    """
+    logger.info(f"Starting daily update... (mode: {'full' if force_full else 'incremental'})")
 
     if not skip_trading_check and not is_trading_day():
         logger.info("Not a trading day. Exiting. Use --force to override.")
@@ -327,7 +432,7 @@ def run_daily_update(start_date: str = None, skip_trading_check: bool = False, f
 
     conn = sqlite3.connect(DB_PATH)
     try:
-        update_daily_quotes(conn, start_date=start_date, fetch_all=fetch_all, limit=limit)
+        update_daily_quotes(conn, start_date=start_date, fetch_all=fetch_all, limit=limit, force_full=force_full)
         logger.info("Daily update completed successfully")
     except Exception as e:
         logger.error(f"Daily update failed: {e}")
@@ -390,13 +495,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python scraper.py --mode daily                    # Update watchlist stocks (default 1 year)
-  python scraper.py --mode daily --years 3          # Update watchlist for 3 years
-  python scraper.py --mode daily --all              # Update ALL assets (1 year)
-  python scraper.py --mode daily --all --years 5    # Update ALL assets for 5 years
+  python scraper.py --mode daily                    # Incremental update for watchlist stocks
+  python scraper.py --mode daily --all              # Incremental update for ALL assets
+  python scraper.py --mode daily --all --full       # Full update (re-fetch all history)
+  python scraper.py --mode daily --years 3          # Set default history to 3 years (for new assets)
+  python scraper.py --mode daily --all --years 5    # Update ALL assets, 5 years for new ones
   python scraper.py --mode daily --all --limit 500  # Update first 500 assets
-  python scraper.py --mode daily --years 5 --force  # Update 5 years, ignore trading day check
-  python scraper.py --mode daily --start 20200101   # Update from specific date
+  python scraper.py --mode daily --years 5 --force  # Ignore trading day check
+  python scraper.py --mode daily --start 20200101   # Set start date for new assets
   python scraper.py --mode monthly                  # Update all stock basic info
   python scraper.py --mode monthly --type etf       # Update ETF basic info only
   python scraper.py --mode monthly --type lof       # Update LOF basic info only
@@ -447,6 +553,11 @@ Examples:
         action="store_true",
         help="Force update even on non-trading days. Only used with --mode daily.",
     )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Force full update (re-fetch all history from start_date). By default, uses incremental update. Only used with --mode daily.",
+    )
     args = parser.parse_args()
 
     if not DB_PATH.exists():
@@ -459,7 +570,7 @@ Examples:
             start_date = args.start
         else:
             start_date = (datetime.now() - timedelta(days=365 * args.years)).strftime("%Y%m%d")
-        run_daily_update(start_date=start_date, skip_trading_check=args.force, fetch_all=args.fetch_all, limit=args.limit)
+        run_daily_update(start_date=start_date, skip_trading_check=args.force, fetch_all=args.fetch_all, limit=args.limit, force_full=args.full)
     elif args.mode == "monthly":
         if args.type == "all":
             asset_types = ["stock", "etf", "lof"]

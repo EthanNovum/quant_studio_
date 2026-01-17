@@ -2,7 +2,7 @@
 
 ## 概述
 
-`update_data.py` 是 AlphaNote 的数据更新脚本，使用 AkShare 从网络获取 A 股市场数据（包括股票、ETF、LOF 基金）并存储到本地 SQLite 数据库。
+`scraper.py` 是 AlphaNote 的数据更新脚本，位于 `backend/` 目录下，使用 AkShare 从网络获取 A 股市场数据（包括股票、ETF、LOF 基金）并存储到本地 SQLite 数据库。
 
 ## 依赖
 
@@ -21,14 +21,17 @@ uv pip install akshare pandas
 ### 基本命令
 
 ```bash
+# 进入 backend 目录
+cd backend
+
 # 查看帮助信息
-python update_data.py --help
+python scraper.py --help
 
 # 更新股票基本信息（建议每月运行一次）
-python update_data.py --mode monthly
+python scraper.py --mode monthly
 
 # 更新行情数据（默认获取最近1年数据）
-python update_data.py --mode daily
+python scraper.py --mode daily
 ```
 
 ### 参数说明
@@ -49,53 +52,53 @@ python update_data.py --mode daily
 
 ```bash
 # 更新所有股票的基本信息
-python update_data.py --mode monthly
+python scraper.py --mode monthly
 
 # 只更新前100只股票（用于测试）
-python update_data.py --mode monthly --limit 100
+python scraper.py --mode monthly --limit 100
 
 # 更新 ETF 基金基本信息
-python update_data.py --mode monthly --type etf
+python scraper.py --mode monthly --type etf
 
 # 更新 LOF 基金基本信息
-python update_data.py --mode monthly --type lof
+python scraper.py --mode monthly --type lof
 
 # 更新所有资产（股票 + ETF + LOF）
-python update_data.py --mode monthly --type all
+python scraper.py --mode monthly --type all
 
 # 更新 ETF，但只更新前50只（用于测试）
-python update_data.py --mode monthly --type etf --limit 50
+python scraper.py --mode monthly --type etf --limit 50
 
 # 更新所有资产，每种类型限制100只
-python update_data.py --mode monthly --type all --limit 100
+python scraper.py --mode monthly --type all --limit 100
 ```
 
 #### 更新行情数据（daily 模式）
 
 ```bash
 # 更新自选股最近1年的行情数据（默认）
-python update_data.py --mode daily
+python scraper.py --mode daily
 
 # 更新自选股最近3年的行情数据
-python update_data.py --mode daily --years 3
+python scraper.py --mode daily --years 3
 
 # 更新【所有资产】最近1年的行情数据（包括股票、ETF、LOF）
-python update_data.py --mode daily --all
+python scraper.py --mode daily --all
 
 # 更新【所有资产】最近5年的行情数据
-python update_data.py --mode daily --all --years 5
+python scraper.py --mode daily --all --years 5
 
 # 更新【所有资产】但限制前500只
-python update_data.py --mode daily --all --limit 500
+python scraper.py --mode daily --all --limit 500
 
 # 从指定日期开始更新（从2020年1月1日至今）
-python update_data.py --mode daily --start 20200101
+python scraper.py --mode daily --start 20200101
 
 # 强制更新（即使今天不是交易日）
-python update_data.py --mode daily --years 2 --force
+python scraper.py --mode daily --years 2 --force
 
 # 组合使用：更新所有资产5年数据，强制运行
-python update_data.py --mode daily --all --years 5 --force
+python scraper.py --mode daily --all --years 5 --force
 ```
 
 ### 使用 uv 运行
@@ -103,17 +106,20 @@ python update_data.py --mode daily --all --years 5 --force
 如果你使用 uv 管理 Python 环境：
 
 ```bash
+# 进入 backend 目录
+cd backend
+
 # 更新3年行情数据
-uv run python update_data.py --mode daily --years 3
+uv run python scraper.py --mode daily --years 3
 
 # 更新股票基本信息
-uv run python update_data.py --mode monthly
+uv run python scraper.py --mode monthly
 
 # 更新 ETF 基本信息
-uv run python update_data.py --mode monthly --type etf
+uv run python scraper.py --mode monthly --type etf
 
 # 更新所有资产基本信息
-uv run python update_data.py --mode monthly --type all
+uv run python scraper.py --mode monthly --type all
 ```
 
 ## 更新模式说明
@@ -151,13 +157,13 @@ uv run python update_data.py --mode monthly --type all
 
 ## 数据存储
 
-- 数据库位置：`data/alphanote.db`
-- 更新进度文件：`data/progress.json`
-- 日志文件：`logs/update.log`
+- 数据库位置：`backend/data/alphanote.db`
+- 更新进度文件：`backend/data/progress.json`
+- 日志文件：`backend/data/update.log`
 
 ## 进度监控
 
-脚本运行时会将进度写入 `data/progress.json`，前端可以通过轮询该文件显示更新进度。
+脚本运行时会将进度写入 `backend/data/progress.json`，前端可以通过 API (`GET /api/progress`) 获取更新进度。
 
 进度文件格式：
 
@@ -180,7 +186,7 @@ uv run python update_data.py --mode monthly --type all
 A: 默认情况下，daily 模式只在交易日运行。如果今天不是交易日，脚本会跳过。使用 `--force` 参数可以强制运行：
 
 ```bash
-python update_data.py --mode daily --force
+python scraper.py --mode daily --force
 ```
 
 ### Q: 如何只更新特定时间段的数据？
@@ -189,7 +195,7 @@ A: 使用 `--start` 参数指定起始日期：
 
 ```bash
 # 从2022年1月1日开始更新
-python update_data.py --mode daily --start 20220101
+python scraper.py --mode daily --start 20220101
 ```
 
 ### Q: 如何添加 ETF 到数据库？
@@ -198,10 +204,10 @@ A: 先更新 ETF 基本信息，然后更新行情数据：
 
 ```bash
 # 第一步：添加 ETF 到 stock_basic 表
-python update_data.py --mode monthly --type etf
+python scraper.py --mode monthly --type etf
 
 # 第二步：更新行情数据（需要先把 ETF 加入自选股，或使用 --all）
-python update_data.py --mode daily --all --force
+python scraper.py --mode daily --all --force
 ```
 
 ### Q: 更新很慢怎么办？
@@ -229,14 +235,14 @@ python init_db.py
 crontab -e
 
 # 每天下午6点更新行情数据
-0 18 * * * cd /path/to/alphanote/scripts && python update_data.py --mode daily
+0 18 * * * cd /path/to/alphanote/backend && python scraper.py --mode daily
 
 # 每月1号凌晨2点更新股票基本信息
-0 2 1 * * cd /path/to/alphanote/scripts && python update_data.py --mode monthly
+0 2 1 * * cd /path/to/alphanote/backend && python scraper.py --mode monthly
 
 # 每月1号凌晨3点更新 ETF 基本信息
-0 3 1 * * cd /path/to/alphanote/scripts && python update_data.py --mode monthly --type etf
+0 3 1 * * cd /path/to/alphanote/backend && python scraper.py --mode monthly --type etf
 
 # 每月1号凌晨4点更新 LOF 基本信息
-0 4 1 * * cd /path/to/alphanote/scripts && python update_data.py --mode monthly --type lof
+0 4 1 * * cd /path/to/alphanote/backend && python scraper.py --mode monthly --type lof
 ```
