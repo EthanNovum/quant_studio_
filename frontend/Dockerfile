@@ -10,10 +10,17 @@ RUN npm run build
 
 # --- Stage 2: Production (Nginx) ---
 FROM nginx:alpine AS production-stage
+
 # Copy built files to Nginx directory
 COPY --from=build-stage /app/dist /usr/share/nginx/html
-# Copy nginx config from root directory
+
+# Copy nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
+# Create directory for certbot challenge
+RUN mkdir -p /var/www/certbot
+
 EXPOSE 80
+EXPOSE 443
+
 CMD ["nginx", "-g", "daemon off;"]
