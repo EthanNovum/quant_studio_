@@ -58,7 +58,7 @@ export default function TransactionForm() {
     setSelectedStock(stock)
     const currentPrice = await getStockPrice(stock.code)
     if (currentPrice) {
-      setPrice(currentPrice.toFixed(2))
+      setPrice(currentPrice.toFixed(3))
     }
   }
 
@@ -115,8 +115,8 @@ export default function TransactionForm() {
               <Label>价格</Label>
               <Input
                 type="number"
-                step="0.01"
-                placeholder="0.00"
+                step="0.001"
+                placeholder="0.000"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
               />

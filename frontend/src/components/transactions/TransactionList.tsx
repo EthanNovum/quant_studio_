@@ -132,9 +132,9 @@ export default function TransactionList() {
                       <TableCell className="font-medium">{tx.code}</TableCell>
                       <TableCell>{tx.name || '-'}</TableCell>
                       <TableCell>{getActionLabel(tx.action)}</TableCell>
-                      <TableCell className="text-right">{formatNumber(tx.price)}</TableCell>
+                      <TableCell className="text-right">{formatNumber(tx.price, 3)}</TableCell>
                       <TableCell className="text-right">{tx.quantity}</TableCell>
-                      <TableCell className="text-right">{formatNumber(tx.price * tx.quantity)}</TableCell>
+                      <TableCell className="text-right">{formatNumber(tx.price * tx.quantity, 3)}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">
                           {tx.reason && (
@@ -191,7 +191,7 @@ export default function TransactionList() {
                 <Label>价格</Label>
                 <Input
                   type="number"
-                  step="0.01"
+                  step="0.001"
                   value={editForm.price}
                   onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
                 />

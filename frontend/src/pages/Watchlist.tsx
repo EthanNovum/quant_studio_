@@ -190,7 +190,7 @@ export default function Watchlist() {
   const queryClient = useQueryClient()
   const { addToast } = useToastStore()
 
-  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null)
+  const [selectedItem, setSelectedItem] = useState<WatchlistItem | null>(null)
   const [isNewGroupOpen, setIsNewGroupOpen] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [addingToGroup, setAddingToGroup] = useState<number | null>(null)
@@ -211,9 +211,9 @@ export default function Watchlist() {
   })
 
   const { data: quotesData } = useQuery({
-    queryKey: ['quotes', selectedSymbol],
-    queryFn: () => getQuotes(selectedSymbol!),
-    enabled: !!selectedSymbol,
+    queryKey: ['quotes', selectedItem?.symbol],
+    queryFn: () => getQuotes(selectedItem!.symbol),
+    enabled: !!selectedItem,
   })
 
   const createGroupMutation = useMutation({
@@ -441,8 +441,8 @@ export default function Watchlist() {
                           <SortableItem
                             key={item.id}
                             item={item}
-                            isSelected={selectedSymbol === item.symbol}
-                            onSelect={() => setSelectedSymbol(item.symbol)}
+                            isSelected={selectedItem?.symbol === item.symbol}
+                            onSelect={() => setSelectedItem(item)}
                             onRemove={() => removeItemMutation.mutate(item.id)}
                             onTrade={() => handleTrade(item)}
                             onDetails={() => handleDetails(item)}
@@ -471,10 +471,10 @@ export default function Watchlist() {
 
         {/* Chart area */}
         <div className="lg:col-span-2">
-          {selectedSymbol && quotesData ? (
+          {selectedItem && quotesData ? (
             <Card>
               <CardHeader>
-                <CardTitle>{selectedSymbol}</CardTitle>
+                <CardTitle>{selectedItem.symbol} {selectedItem.stock_name}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ChartHeader quote={latestQuote ? {

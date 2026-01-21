@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     app_name: str = "AlphaNote API"
     debug: bool = False
 
+    # Simple password protection (set via environment variable)
+    auth_password: str = os.environ.get("AUTH_PASSWORD", "changeme")
+    secret_key: str = os.environ.get("SECRET_KEY", "your-secret-key-change-in-production")
+
     # Database - can be overridden by environment variable
     # Default: backend/data/alphanote.db (relative to backend directory)
     database_path: Path = Path(
