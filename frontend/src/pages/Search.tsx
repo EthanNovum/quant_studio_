@@ -24,7 +24,7 @@ export default function Search() {
           <SearchIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="h-14 pl-12 text-lg"
-            placeholder="输入股票代码或名称..."
+            placeholder="输入股票代码、名称或拼音首字母..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             autoFocus

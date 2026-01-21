@@ -63,6 +63,15 @@ class StockPriceResponse(BaseModel):
     price: float | None = None
 
 
+class TradeUpdate(BaseModel):
+    """Trade update schema."""
+    price: float | None = None
+    quantity: float | None = None
+    date: str | None = None
+    reason: str | None = None
+    commission: float | None = None
+
+
 @router.get("")
 def list_trades(db: Session = Depends(get_db)):
     """List all trades."""
@@ -134,6 +143,43 @@ def delete_trade(id: int, db: Session = Depends(get_db)):
     db.commit()
 
     return {"success": True}
+
+
+@router.put("/{id}")
+def update_trade(id: int, trade: TradeUpdate, db: Session = Depends(get_db)):
+    """Update a trade."""
+    transaction = db.query(Transaction).filter(Transaction.id == id).first()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Trade not found")
+
+    if trade.price is not None:
+        transaction.price = trade.price
+    if trade.quantity is not None:
+        transaction.quantity = trade.quantity
+    if trade.date is not None:
+        transaction.date = trade.date
+    if trade.reason is not None:
+        transaction.reason = trade.reason
+    if trade.commission is not None:
+        transaction.commission = trade.commission
+
+    db.commit()
+    db.refresh(transaction)
+
+    stock = db.query(StockBasic).filter(StockBasic.symbol == transaction.symbol).first()
+
+    return TradeResponse(
+        id=transaction.id,
+        code=transaction.symbol,
+        name=stock.name if stock else None,
+        action=transaction.action,
+        price=transaction.price,
+        quantity=transaction.quantity,
+        date=transaction.date,
+        reason=transaction.reason,
+        commission=transaction.commission,
+        created_at=transaction.created_at.isoformat() if transaction.created_at else None,
+    )
 
 
 @router.get("/positions")

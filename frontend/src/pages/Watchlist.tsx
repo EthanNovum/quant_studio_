@@ -1,6 +1,24 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, FolderPlus } from 'lucide-react'
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverEvent,
+  DragStartEvent,
+  DragOverlay,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { Plus, Trash2, FolderPlus, GripVertical, TrendingUp, ExternalLink } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,12 +38,155 @@ import {
   deleteGroup,
   addItem,
   removeItem,
+  reorderItems,
   type WatchlistGroup,
+  type WatchlistItem,
 } from '@/services/watchlistApi'
 import { getQuotes } from '@/services/quoteApi'
+import { getStockPrice } from '@/services/transactionApi'
 import { useToastStore } from '@/store'
 
+interface SortableItemProps {
+  item: WatchlistItem
+  isSelected: boolean
+  onSelect: () => void
+  onRemove: () => void
+  onTrade: () => void
+  onDetails: () => void
+}
+
+function SortableItem({ item, isSelected, onSelect, onRemove, onTrade, onDetails }: SortableItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  const getAssetTypeLabel = (assetType: string | null) => {
+    if (!assetType || assetType === 'stock') return null
+    if (assetType === 'etf') return 'ETF'
+    if (assetType === 'lof') return 'LOF'
+    return assetType.toUpperCase()
+  }
+
+  const assetLabel = getAssetTypeLabel(item.asset_type)
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center justify-between rounded px-2 py-1.5 hover:bg-accent ${
+        isSelected ? 'bg-accent' : ''
+      }`}
+    >
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <button
+          className="cursor-grab touch-none text-muted-foreground hover:text-foreground"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+        <div
+          className="flex-1 min-w-0 cursor-pointer"
+          onClick={onSelect}
+        >
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{item.symbol}</span>
+            {assetLabel && (
+              <span className="inline-flex items-center rounded-md bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 dark:bg-blue-900/30 dark:text-blue-400 dark:ring-blue-400/30">
+                {assetLabel}
+              </span>
+            )}
+          </div>
+          {item.stock_name && (
+            <span className="text-sm text-muted-foreground truncate block">{item.stock_name}</span>
+          )}
+        </div>
+      </div>
+      <div className="flex gap-1 shrink-0">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={(e) => {
+            e.stopPropagation()
+            onTrade()
+          }}
+          title="交易"
+        >
+          <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDetails()
+          }}
+          title="详情"
+        >
+          <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={(e) => {
+            e.stopPropagation()
+            onRemove()
+          }}
+          title="删除"
+        >
+          <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function DragOverlayItem({ item }: { item: WatchlistItem }) {
+  const getAssetTypeLabel = (assetType: string | null) => {
+    if (!assetType || assetType === 'stock') return null
+    if (assetType === 'etf') return 'ETF'
+    if (assetType === 'lof') return 'LOF'
+    return assetType.toUpperCase()
+  }
+
+  const assetLabel = getAssetTypeLabel(item.asset_type)
+
+  return (
+    <div className="flex items-center gap-2 rounded bg-accent px-2 py-1.5 shadow-lg">
+      <GripVertical className="h-4 w-4 text-muted-foreground" />
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="font-medium">{item.symbol}</span>
+          {assetLabel && (
+            <span className="inline-flex items-center rounded-md bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+              {assetLabel}
+            </span>
+          )}
+        </div>
+        {item.stock_name && (
+          <span className="text-sm text-muted-foreground">{item.stock_name}</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Watchlist() {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { addToast } = useToastStore()
 
@@ -34,6 +195,15 @@ export default function Watchlist() {
   const [newGroupName, setNewGroupName] = useState('')
   const [addingToGroup, setAddingToGroup] = useState<number | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<WatchlistGroup | null>(null)
+  const [activeItem, setActiveItem] = useState<WatchlistItem | null>(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  )
 
   const { data: groups, isLoading } = useQuery({
     queryKey: ['watchlist-groups'],
@@ -85,8 +255,142 @@ export default function Watchlist() {
     },
   })
 
+  const reorderMutation = useMutation({
+    mutationFn: reorderItems,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['watchlist-groups'] })
+    },
+  })
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event
+    const allItems = groups?.flatMap(g => g.items) || []
+    const item = allItems.find(i => i.id === active.id)
+    if (item) {
+      setActiveItem(item)
+    }
+  }
+
+  const handleDragOver = (_event: DragOverEvent) => {
+    // Handle drag over for visual feedback if needed
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    setActiveItem(null)
+
+    if (!over || !groups) return
+
+    const activeId = active.id as number
+    const overId = over.id as number
+
+    // Find the source group and item
+    let sourceGroup: WatchlistGroup | undefined
+    let sourceItem: WatchlistItem | undefined
+    for (const group of groups) {
+      const item = group.items.find(i => i.id === activeId)
+      if (item) {
+        sourceGroup = group
+        sourceItem = item
+        break
+      }
+    }
+
+    if (!sourceGroup || !sourceItem) return
+
+    // Find the target group (where we're dropping)
+    let targetGroup: WatchlistGroup | undefined
+    let targetItemIndex = -1
+    for (const group of groups) {
+      const idx = group.items.findIndex(i => i.id === overId)
+      if (idx !== -1) {
+        targetGroup = group
+        targetItemIndex = idx
+        break
+      }
+    }
+
+    // If dropping on a group header (no target item found), add to end of that group
+    if (!targetGroup) {
+      // Check if overId matches a group id
+      targetGroup = groups.find(g => g.id === overId)
+      if (targetGroup) {
+        targetItemIndex = targetGroup.items.length
+      }
+    }
+
+    if (!targetGroup) return
+
+    // Build the reorder request
+    const reorderData: { id: number; group_id: number; sort_order: number }[] = []
+
+    if (sourceGroup.id === targetGroup.id) {
+      // Same group reorder
+      const items = [...sourceGroup.items]
+      const oldIndex = items.findIndex(i => i.id === activeId)
+      const newIndex = targetItemIndex
+
+      if (oldIndex === newIndex) return
+
+      // Remove and insert
+      const [removed] = items.splice(oldIndex, 1)
+      items.splice(newIndex > oldIndex ? newIndex : newIndex, 0, removed)
+
+      // Build reorder data
+      items.forEach((item, idx) => {
+        reorderData.push({
+          id: item.id,
+          group_id: sourceGroup!.id,
+          sort_order: idx,
+        })
+      })
+    } else {
+      // Cross-group move
+      // Remove from source group
+      const sourceItems = sourceGroup.items.filter(i => i.id !== activeId)
+      sourceItems.forEach((item, idx) => {
+        reorderData.push({
+          id: item.id,
+          group_id: sourceGroup!.id,
+          sort_order: idx,
+        })
+      })
+
+      // Add to target group
+      const targetItems = [...targetGroup.items]
+      targetItems.splice(targetItemIndex, 0, sourceItem)
+      targetItems.forEach((item, idx) => {
+        reorderData.push({
+          id: item.id,
+          group_id: targetGroup!.id,
+          sort_order: idx,
+        })
+      })
+    }
+
+    reorderMutation.mutate(reorderData)
+  }
+
+  const handleTrade = async (item: WatchlistItem) => {
+    const price = await getStockPrice(item.symbol)
+    const params = new URLSearchParams({
+      code: item.symbol,
+      name: item.stock_name || '',
+      price: price?.toString() || '',
+    })
+    navigate(`/trade_review?${params.toString()}`)
+  }
+
+  const handleDetails = (item: WatchlistItem) => {
+    navigate(`/search/${item.symbol}`)
+  }
+
   // Get latest quote for chart header
   const latestQuote = quotesData && quotesData.length > 0 ? quotesData[quotesData.length - 1] : null
+
+  // Get all items for DndContext
+  const allItems = groups?.flatMap(g => g.items) || []
+  const allItemIds = allItems.map(i => i.id)
 
   return (
     <div className="space-y-6">
@@ -104,7 +408,13 @@ export default function Watchlist() {
           {isLoading ? (
             <div className="py-8 text-center text-muted-foreground">加载中...</div>
           ) : (
-            <>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+            >
               {/* Groups */}
               {groups?.map((group) => (
                 <Card key={group.id}>
@@ -123,37 +433,30 @@ export default function Watchlist() {
                     {group.items.length === 0 ? (
                       <div className="py-2 text-sm text-muted-foreground">空</div>
                     ) : (
-                      group.items.map((item) => (
-                        <div
-                          key={item.id}
-                          className={`flex cursor-pointer items-center justify-between rounded px-2 py-1.5 hover:bg-accent ${
-                            selectedSymbol === item.symbol ? 'bg-accent' : ''
-                          }`}
-                          onClick={() => setSelectedSymbol(item.symbol)}
-                        >
-                          <div>
-                            <span className="font-medium">{item.symbol}</span>
-                            {item.stock_name && (
-                              <span className="ml-2 text-sm text-muted-foreground">{item.stock_name}</span>
-                            )}
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              removeItemMutation.mutate(item.id)
-                            }}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ))
+                      <SortableContext
+                        items={group.items.map(i => i.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {group.items.map((item) => (
+                          <SortableItem
+                            key={item.id}
+                            item={item}
+                            isSelected={selectedSymbol === item.symbol}
+                            onSelect={() => setSelectedSymbol(item.symbol)}
+                            onRemove={() => removeItemMutation.mutate(item.id)}
+                            onTrade={() => handleTrade(item)}
+                            onDetails={() => handleDetails(item)}
+                          />
+                        ))}
+                      </SortableContext>
                     )}
                   </CardContent>
                 </Card>
               ))}
+
+              <DragOverlay>
+                {activeItem ? <DragOverlayItem item={activeItem} /> : null}
+              </DragOverlay>
 
               {(!groups || groups.length === 0) && (
                 <Card>
@@ -162,7 +465,7 @@ export default function Watchlist() {
                   </CardContent>
                 </Card>
               )}
-            </>
+            </DndContext>
           )}
         </div>
 

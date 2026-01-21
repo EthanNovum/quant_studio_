@@ -6,6 +6,7 @@ export interface WatchlistItem {
   sort_order: number
   added_at: string
   stock_name: string | null
+  asset_type: string | null  // stock, etf, lof
 }
 
 export interface WatchlistGroup {

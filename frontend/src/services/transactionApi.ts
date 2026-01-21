@@ -23,6 +23,14 @@ export interface TradeCreate {
   commission?: number
 }
 
+export interface TradeUpdate {
+  price?: number
+  quantity?: number
+  date?: string
+  reason?: string
+  commission?: number
+}
+
 export interface Position {
   code: string
   name?: string
@@ -41,6 +49,11 @@ export async function getTrades(): Promise<Trade[]> {
 
 export async function createTrade(trade: TradeCreate): Promise<Trade> {
   const { data } = await api.post('/trades', trade)
+  return data
+}
+
+export async function updateTrade(id: number, trade: TradeUpdate): Promise<Trade> {
+  const { data } = await api.put(`/trades/${id}`, trade)
   return data
 }
 

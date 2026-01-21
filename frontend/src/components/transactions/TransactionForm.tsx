@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,6 +11,7 @@ import { createTrade, getStockPrice } from '@/services/transactionApi'
 import { useToastStore } from '@/store'
 
 export default function TransactionForm() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const { addToast } = useToastStore()
 
@@ -19,6 +21,22 @@ export default function TransactionForm() {
   const [quantity, setQuantity] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [reason, setReason] = useState('')
+
+  // Read URL params on mount
+  useEffect(() => {
+    const code = searchParams.get('code')
+    const name = searchParams.get('name')
+    const urlPrice = searchParams.get('price')
+
+    if (code) {
+      setSelectedStock({ code, name: name || '' })
+      if (urlPrice) {
+        setPrice(urlPrice)
+      }
+      // Clear URL params after reading
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   const mutation = useMutation({
     mutationFn: createTrade,

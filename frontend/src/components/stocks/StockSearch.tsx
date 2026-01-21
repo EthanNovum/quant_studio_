@@ -4,7 +4,7 @@ import { Search as SearchIcon } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { searchStocks } from '@/services/stockApi'
 
-export default function StockSearch({ onSelect, placeholder = '搜索股票...', className }: {
+export default function StockSearch({ onSelect, placeholder = '搜索股票(代码/名称/拼音)...', className }: {
   onSelect: (stock: { code: string; name: string }) => void
   placeholder?: string
   className?: string

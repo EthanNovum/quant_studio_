@@ -1,4 +1,5 @@
 import api from './api'
+import { matchesPinyin } from '@/lib/utils'
 
 export interface StockSearchResult {
   symbol: string
@@ -44,9 +45,23 @@ interface StockListResponse {
   limit: number
 }
 
+// Check if query looks like pinyin (only lowercase letters)
+function isPinyinQuery(q: string): boolean {
+  return /^[a-z]+$/.test(q.toLowerCase())
+}
+
 export async function searchStocks(q: string): Promise<StockSearchResult[]> {
+  // First try normal backend search
   const { data } = await api.get<StockListResponse>('/stocks', { params: { search: q } })
-  return data.stocks
+
+  // If results found or not a pinyin-like query, return as-is
+  if (data.stocks.length > 0 || !isPinyinQuery(q)) {
+    return data.stocks
+  }
+
+  // For pinyin-like queries with no results, fetch all stocks and filter by pinyin
+  const { data: allData } = await api.get<StockListResponse>('/stocks', { params: { limit: 10000 } })
+  return allData.stocks.filter(stock => matchesPinyin(stock.name, q))
 }
 
 export async function getStockDetail(symbol: string): Promise<StockDetail> {

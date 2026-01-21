@@ -121,6 +121,29 @@ def get_asset_type(symbol: str) -> str:
     return "stock"
 
 
+def fetch_stock_indicators(symbol: str) -> pd.DataFrame:
+    """Fetch stock indicators (PE, PB, Market Cap) using stock_a_indicator_lg.
+
+    Returns DataFrame with columns: trade_date, pe, pe_ttm, pb, total_mv
+    """
+    try:
+        df = ak.stock_a_indicator_lg(symbol=symbol)
+        if not df.empty:
+            # Rename columns to match our schema
+            df = df.rename(columns={
+                "trade_date": "date",
+                "pe_ttm": "pe_ttm",
+                "pb": "pb",
+                "total_mv": "market_cap"
+            })
+            # Convert date to string format YYYY-MM-DD
+            df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+            return df[["date", "pe_ttm", "pb", "market_cap"]]
+    except Exception as e:
+        logger.warning(f"Failed to fetch indicators for {symbol}: {e}")
+    return pd.DataFrame()
+
+
 def update_stock_basic(conn: sqlite3.Connection, assets: pd.DataFrame):
     """Update stock_basic table with basic info."""
     cursor = conn.cursor()
@@ -370,12 +393,24 @@ def update_daily_quotes(conn: sqlite3.Connection, symbols: list[str] | None = No
                 }
             )
 
+            # For stocks, fetch additional indicators (PE, PB, Market Cap)
+            if asset_type == "stock":
+                try:
+                    indicators_df = fetch_stock_indicators(symbol)
+                    if not indicators_df.empty:
+                        # Ensure date format matches
+                        df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+                        # Merge indicators with quote data
+                        df = df.merge(indicators_df, on="date", how="left")
+                except Exception as e:
+                    logger.warning(f"Failed to merge indicators for {symbol}: {e}")
+
             # Insert data
             for _, row in df.iterrows():
                 cursor.execute(
                     """
-                    INSERT INTO daily_quotes (symbol, date, open, high, low, close, volume, turnover, turnover_rate)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO daily_quotes (symbol, date, open, high, low, close, volume, turnover, turnover_rate, pe_ttm, pb, market_cap)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(symbol, date) DO UPDATE SET
                         open = excluded.open,
                         high = excluded.high,
@@ -383,7 +418,10 @@ def update_daily_quotes(conn: sqlite3.Connection, symbols: list[str] | None = No
                         close = excluded.close,
                         volume = excluded.volume,
                         turnover = excluded.turnover,
-                        turnover_rate = excluded.turnover_rate
+                        turnover_rate = excluded.turnover_rate,
+                        pe_ttm = COALESCE(excluded.pe_ttm, pe_ttm),
+                        pb = COALESCE(excluded.pb, pb),
+                        market_cap = COALESCE(excluded.market_cap, market_cap)
                 """,
                     (
                         symbol,
@@ -395,6 +433,9 @@ def update_daily_quotes(conn: sqlite3.Connection, symbols: list[str] | None = No
                         row.get("volume"),
                         row.get("turnover"),
                         row.get("turnover_rate"),
+                        row.get("pe_ttm"),
+                        row.get("pb"),
+                        row.get("market_cap"),
                     ),
                 )
 

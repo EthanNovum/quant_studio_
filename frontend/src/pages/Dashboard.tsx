@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { TrendingUp, TrendingDown, Wallet, FileText } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getPositions, getTrades } from '@/services/transactionApi'
-import { formatNumber, formatPercent, formatLargeNumber } from '@/lib/utils'
+import { formatNumber, formatPercent } from '@/lib/utils'
 
 export default function Dashboard() {
   const { data: positions } = useQuery({
@@ -41,7 +41,7 @@ export default function Dashboard() {
             <Wallet className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatLargeNumber(totalValue)}</div>
+            <div className="text-2xl font-bold">{formatNumber(totalValue)}</div>
           </CardContent>
         </Card>
 
@@ -51,7 +51,7 @@ export default function Dashboard() {
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatLargeNumber(totalCost)}</div>
+            <div className="text-2xl font-bold">{formatNumber(totalCost)}</div>
           </CardContent>
         </Card>
 

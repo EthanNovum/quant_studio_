@@ -36,6 +36,7 @@ def list_groups(db: Session = Depends(get_db)):
                     sort_order=item.sort_order,
                     added_at=item.added_at,
                     stock_name=stock.name if stock else None,
+                    asset_type=stock.asset_type if stock else None,
                 )
             )
         result.append(
@@ -95,6 +96,7 @@ def update_group(id: int, group: WatchlistGroupUpdate, db: Session = Depends(get
                 sort_order=item.sort_order,
                 added_at=item.added_at,
                 stock_name=stock.name if stock else None,
+                asset_type=stock.asset_type if stock else None,
             )
         )
 
@@ -162,6 +164,7 @@ def add_item(item: WatchlistItemCreate, db: Session = Depends(get_db)):
         sort_order=new_item.sort_order,
         added_at=new_item.added_at,
         stock_name=stock.name if stock else None,
+        asset_type=stock.asset_type if stock else None,
     )
 
 

@@ -13,6 +13,7 @@ class WatchlistItemResponse(BaseModel):
     sort_order: int
     added_at: datetime
     stock_name: str | None = None
+    asset_type: str | None = None  # stock, etf, lof
 
     class Config:
         from_attributes = True

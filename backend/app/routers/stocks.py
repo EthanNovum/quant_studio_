@@ -18,7 +18,7 @@ def list_stocks(
     search: str | None = Query(None, description="Search by symbol or name"),
     industry: str | None = Query(None, description="Filter by industry"),
     page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(50, ge=1, le=10000),
     db: Session = Depends(get_db),
 ):
     """List stocks with optional search and filter."""
