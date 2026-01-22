@@ -269,7 +269,7 @@ export default function Screener() {
                         <TableCell>{stock.name}</TableCell>
                         <TableCell>{stock.industry || '-'}</TableCell>
                         <TableCell className="text-right">
-                          {stock.roe !== null && stock.roe !== undefined ? `${stock.roe.toFixed(2)}%` : '-'}
+                          {stock.roe !== null && stock.roe !== undefined ? `${Number(stock.roe).toFixed(2)}%` : '-'}
                         </TableCell>
                       </TableRow>
                     ))}

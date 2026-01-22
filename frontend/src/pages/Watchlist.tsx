@@ -404,7 +404,7 @@ export default function Watchlist() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Groups list */}
-        <div className="space-y-4 lg:col-span-1">
+        <div className="space-y-4 lg:col-span-1 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
           {isLoading ? (
             <div className="py-8 text-center text-muted-foreground">加载中...</div>
           ) : (
@@ -470,7 +470,7 @@ export default function Watchlist() {
         </div>
 
         {/* Chart area */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 lg:sticky lg:top-20 lg:self-start">
           {selectedItem && quotesData ? (
             <Card>
               <CardHeader>
