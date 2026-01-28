@@ -1,11 +1,14 @@
 """Watchlist endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.stock import StockBasic
+from app.models.quote import DailyQuote
 from app.models.watchlist import WatchlistGroup, WatchlistItem
+from app.models.zhihu import ArticleStockRef
 from app.schemas.watchlist import (
     WatchlistGroupCreate,
     WatchlistGroupResponse,
@@ -19,6 +22,63 @@ from app.schemas.watchlist import (
 router = APIRouter()
 
 
+def get_item_with_stats(item: WatchlistItem, db: Session) -> WatchlistItemResponse:
+    """Build WatchlistItemResponse with financial and sentiment stats."""
+    stock = db.query(StockBasic).filter(StockBasic.symbol == item.symbol).first()
+
+    # Get latest quote for financial indicators
+    latest_quote = (
+        db.query(DailyQuote)
+        .filter(DailyQuote.symbol == item.symbol)
+        .order_by(DailyQuote.date.desc())
+        .first()
+    )
+
+    # Get previous quote for price change calculation
+    prev_quote = None
+    if latest_quote:
+        prev_quote = (
+            db.query(DailyQuote)
+            .filter(DailyQuote.symbol == item.symbol, DailyQuote.date < latest_quote.date)
+            .order_by(DailyQuote.date.desc())
+            .first()
+        )
+
+    # Calculate price change percentage
+    price_change_pct = None
+    if latest_quote and prev_quote and prev_quote.close:
+        price_change_pct = round((latest_quote.close - prev_quote.close) / prev_quote.close * 100, 2)
+
+    # Get sentiment stats (mention count and last mention date)
+    mention_stats = (
+        db.query(
+            func.count(ArticleStockRef.id).label("count"),
+            func.max(ArticleStockRef.display_date).label("last_date"),
+        )
+        .filter(ArticleStockRef.stock_symbol == item.symbol)
+        .first()
+    )
+
+    return WatchlistItemResponse(
+        id=item.id,
+        symbol=item.symbol,
+        sort_order=item.sort_order,
+        added_at=item.added_at,
+        stock_name=stock.name if stock else None,
+        asset_type=stock.asset_type if stock else None,
+        # Financial indicators
+        latest_price=latest_quote.close if latest_quote else None,
+        price_change_pct=price_change_pct,
+        dividend_yield=stock.dividend_yield if stock and hasattr(stock, 'dividend_yield') else None,
+        pe_ttm=latest_quote.pe_ttm if latest_quote else None,
+        pb=latest_quote.pb if latest_quote else None,
+        market_cap=latest_quote.market_cap if latest_quote else None,
+        # Sentiment stats
+        mention_count=mention_stats.count if mention_stats else 0,
+        last_mention_date=mention_stats.last_date if mention_stats else None,
+    )
+
+
 @router.get("/groups", response_model=WatchlistGroupsResponse)
 def list_groups(db: Session = Depends(get_db)):
     """List all watchlist groups with items."""
@@ -28,17 +88,7 @@ def list_groups(db: Session = Depends(get_db)):
     for group in groups:
         items = []
         for item in sorted(group.items, key=lambda x: x.sort_order):
-            stock = db.query(StockBasic).filter(StockBasic.symbol == item.symbol).first()
-            items.append(
-                WatchlistItemResponse(
-                    id=item.id,
-                    symbol=item.symbol,
-                    sort_order=item.sort_order,
-                    added_at=item.added_at,
-                    stock_name=stock.name if stock else None,
-                    asset_type=stock.asset_type if stock else None,
-                )
-            )
+            items.append(get_item_with_stats(item, db))
         result.append(
             WatchlistGroupResponse(
                 id=group.id,
@@ -88,17 +138,7 @@ def update_group(id: int, group: WatchlistGroupUpdate, db: Session = Depends(get
 
     items = []
     for item in sorted(db_group.items, key=lambda x: x.sort_order):
-        stock = db.query(StockBasic).filter(StockBasic.symbol == item.symbol).first()
-        items.append(
-            WatchlistItemResponse(
-                id=item.id,
-                symbol=item.symbol,
-                sort_order=item.sort_order,
-                added_at=item.added_at,
-                stock_name=stock.name if stock else None,
-                asset_type=stock.asset_type if stock else None,
-            )
-        )
+        items.append(get_item_with_stats(item, db))
 
     return WatchlistGroupResponse(
         id=db_group.id,
@@ -156,16 +196,7 @@ def add_item(item: WatchlistItemCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_item)
 
-    stock = db.query(StockBasic).filter(StockBasic.symbol == item.symbol).first()
-
-    return WatchlistItemResponse(
-        id=new_item.id,
-        symbol=new_item.symbol,
-        sort_order=new_item.sort_order,
-        added_at=new_item.added_at,
-        stock_name=stock.name if stock else None,
-        asset_type=stock.asset_type if stock else None,
-    )
+    return get_item_with_stats(new_item, db)
 
 
 @router.delete("/items/{id}")

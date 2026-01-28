@@ -120,6 +120,93 @@ def init_database():
         )
     """)
 
+    # ========== DangInvest / ZhihuInsight Tables ==========
+
+    # stock_aliases - Stock alias for NLP matching
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS stock_aliases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            alias TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (symbol) REFERENCES stock_basic(symbol)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_aliases_symbol ON stock_aliases(symbol)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_aliases_alias ON stock_aliases(alias)")
+
+    # zhihu_content - Crawled zhihu articles/answers
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS zhihu_content (
+            content_id TEXT PRIMARY KEY,
+            content_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            content_text TEXT,
+            content_url TEXT,
+            created_time INTEGER DEFAULT 0,
+            updated_time INTEGER DEFAULT 0,
+            voteup_count INTEGER DEFAULT 0,
+            comment_count INTEGER DEFAULT 0,
+            author_id TEXT,
+            author_name TEXT,
+            author_avatar TEXT,
+            is_tagged INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_zhihu_author ON zhihu_content(author_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_zhihu_created ON zhihu_content(created_time)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_zhihu_tagged ON zhihu_content(is_tagged)")
+
+    # zhihu_creators - Monitored zhihu authors
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS zhihu_creators (
+            user_id TEXT PRIMARY KEY,
+            url_token TEXT NOT NULL,
+            user_nickname TEXT NOT NULL,
+            user_avatar TEXT,
+            user_link TEXT,
+            gender TEXT,
+            fans INTEGER DEFAULT 0,
+            follows INTEGER DEFAULT 0,
+            answer_count INTEGER DEFAULT 0,
+            article_count INTEGER DEFAULT 0,
+            voteup_count INTEGER DEFAULT 0,
+            is_active INTEGER DEFAULT 1,
+            last_crawled_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # article_stock_ref - Article-Stock relationship (created by tag_articles.py)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS article_stock_ref (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            article_id TEXT NOT NULL,
+            stock_symbol TEXT NOT NULL,
+            display_date TEXT NOT NULL,
+            original_date TEXT NOT NULL,
+            match_keyword TEXT,
+            match_score INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (article_id) REFERENCES zhihu_content(content_id),
+            FOREIGN KEY (stock_symbol) REFERENCES stock_basic(symbol)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ref_article ON article_stock_ref(article_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ref_stock ON article_stock_ref(stock_symbol)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ref_display_date ON article_stock_ref(display_date)")
+
+    # crawler_config - Crawler settings (cookies, etc.)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS crawler_config (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT UNIQUE NOT NULL,
+            value TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     conn.commit()
     conn.close()
 

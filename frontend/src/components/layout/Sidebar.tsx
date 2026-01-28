@@ -7,6 +7,8 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  Newspaper,
+  Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/store'
@@ -18,6 +20,8 @@ const navItems = [
   { path: '/screener', icon: Filter, label: '选股器' },
   { path: '/trade_review', icon: FileText, label: '交易复盘' },
   { path: '/search', icon: Search, label: '搜索' },
+  { path: '/sentiment', icon: Newspaper, label: '舆情' },
+  { path: '/settings', icon: Settings, label: '设置' },
 ]
 
 export default function Sidebar() {

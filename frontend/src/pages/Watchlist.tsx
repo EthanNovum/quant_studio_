@@ -18,10 +18,11 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Plus, Trash2, FolderPlus, GripVertical, TrendingUp, ExternalLink } from 'lucide-react'
+import { Plus, Trash2, FolderPlus, GripVertical, TrendingUp, ExternalLink, Newspaper, Calendar, Tag } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
   DialogContent,
@@ -29,7 +30,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
-import KLineChart from '@/components/charts/KLineChart'
+import EChartsKLine from '@/components/charts/EChartsKLine'
 import ChartHeader from '@/components/charts/ChartHeader'
 import StockSearch from '@/components/stocks/StockSearch'
 import {
@@ -43,8 +44,20 @@ import {
   type WatchlistItem,
 } from '@/services/watchlistApi'
 import { getQuotes } from '@/services/quoteApi'
+import { getSentimentMarkers, getStockAliases, createAlias } from '@/services/sentimentApi'
 import { getStockPrice } from '@/services/transactionApi'
 import { useToastStore } from '@/store'
+
+// Format market cap
+function formatMarketCap(value: number | null): string {
+  if (!value) return '-'
+  if (value >= 100000000) {
+    return (value / 100000000).toFixed(2) + '亿'
+  } else if (value >= 10000) {
+    return (value / 10000).toFixed(2) + '万'
+  }
+  return value.toFixed(2)
+}
 
 interface SortableItemProps {
   item: WatchlistItem
@@ -79,12 +92,15 @@ function SortableItem({ item, isSelected, onSelect, onRemove, onTrade, onDetails
   }
 
   const assetLabel = getAssetTypeLabel(item.asset_type)
+  const priceChangeColor = item.price_change_pct
+    ? item.price_change_pct > 0 ? 'text-red-500' : item.price_change_pct < 0 ? 'text-green-500' : ''
+    : ''
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center justify-between rounded px-2 py-1.5 hover:bg-accent ${
+      className={`flex items-center justify-between rounded px-2 py-2 hover:bg-accent ${
         isSelected ? 'bg-accent' : ''
       }`}
     >
@@ -107,10 +123,30 @@ function SortableItem({ item, isSelected, onSelect, onRemove, onTrade, onDetails
                 {assetLabel}
               </span>
             )}
+            {/* Price and change */}
+            {item.latest_price && (
+              <span className={`text-sm font-medium ${priceChangeColor}`}>
+                {item.latest_price.toFixed(2)}
+                {item.price_change_pct !== null && (
+                  <span className="ml-1">
+                    ({item.price_change_pct > 0 ? '+' : ''}{item.price_change_pct.toFixed(2)}%)
+                  </span>
+                )}
+              </span>
+            )}
           </div>
-          {item.stock_name && (
-            <span className="text-sm text-muted-foreground truncate block">{item.stock_name}</span>
-          )}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            {item.stock_name && (
+              <span className="truncate max-w-[80px]">{item.stock_name}</span>
+            )}
+            {/* Sentiment info */}
+            {item.mention_count > 0 && (
+              <span className="flex items-center gap-0.5 text-blue-500">
+                <Newspaper className="h-3 w-3" />
+                提及{item.mention_count}次
+              </span>
+            )}
+          </div>
         </div>
       </div>
       <div className="flex gap-1 shrink-0">
@@ -196,6 +232,8 @@ export default function Watchlist() {
   const [addingToGroup, setAddingToGroup] = useState<number | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<WatchlistGroup | null>(null)
   const [activeItem, setActiveItem] = useState<WatchlistItem | null>(null)
+  const [addAliasOpen, setAddAliasOpen] = useState(false)
+  const [newAlias, setNewAlias] = useState('')
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -213,6 +251,18 @@ export default function Watchlist() {
   const { data: quotesData } = useQuery({
     queryKey: ['quotes', selectedItem?.symbol],
     queryFn: () => getQuotes(selectedItem!.symbol),
+    enabled: !!selectedItem,
+  })
+
+  const { data: sentimentData } = useQuery({
+    queryKey: ['sentiment-markers', selectedItem?.symbol],
+    queryFn: () => getSentimentMarkers(selectedItem!.symbol),
+    enabled: !!selectedItem,
+  })
+
+  const { data: aliasesData } = useQuery({
+    queryKey: ['stock-aliases', selectedItem?.symbol],
+    queryFn: () => getStockAliases(selectedItem!.symbol),
     enabled: !!selectedItem,
   })
 
@@ -261,6 +311,26 @@ export default function Watchlist() {
       queryClient.invalidateQueries({ queryKey: ['watchlist-groups'] })
     },
   })
+
+  const addAliasMutation = useMutation({
+    mutationFn: ({ symbol, alias }: { symbol: string; alias: string }) =>
+      createAlias(symbol, alias),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-aliases', selectedItem?.symbol] })
+      setAddAliasOpen(false)
+      setNewAlias('')
+      addToast({ title: '别名已添加' })
+    },
+    onError: () => {
+      addToast({ title: '添加别名失败', variant: 'destructive' })
+    },
+  })
+
+  const handleAddAlias = () => {
+    if (selectedItem && newAlias.trim()) {
+      addAliasMutation.mutate({ symbol: selectedItem.symbol, alias: newAlias.trim() })
+    }
+  }
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event
@@ -470,33 +540,153 @@ export default function Watchlist() {
         </div>
 
         {/* Chart area */}
-        <div className="lg:col-span-2 lg:sticky lg:top-20 lg:self-start">
+        <div className="lg:col-span-2 lg:sticky lg:top-20 lg:self-start space-y-4">
           {selectedItem && quotesData ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>{selectedItem.symbol} {selectedItem.stock_name}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ChartHeader quote={latestQuote ? {
-                  date: latestQuote.date,
-                  open: latestQuote.open,
-                  high: latestQuote.high,
-                  low: latestQuote.low,
-                  close: latestQuote.close,
-                  volume: latestQuote.volume || null,
-                  turnover: latestQuote.turnover || null,
-                  turnover_rate: null,
-                  pe_ttm: null,
-                  pb: null,
-                  market_cap: null,
-                } : null} />
-                {quotesData.length > 0 && <KLineChart data={quotesData} />}
-              </CardContent>
-            </Card>
+            <>
+              {/* Stock header with sentiment info */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      {selectedItem.symbol} {selectedItem.stock_name}
+                      {selectedItem.asset_type && selectedItem.asset_type !== 'stock' && (
+                        <Badge variant="secondary">{selectedItem.asset_type.toUpperCase()}</Badge>
+                      )}
+                    </CardTitle>
+                    <Button variant="outline" size="sm" onClick={() => handleDetails(selectedItem)}>
+                      查看详情
+                    </Button>
+                  </div>
+                  {/* Sentiment info line */}
+                  {selectedItem.mention_count > 0 && (
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground mt-2">
+                      <span className="flex items-center gap-1">
+                        <Newspaper className="h-4 w-4 text-blue-500" />
+                        提及 {selectedItem.mention_count} 次
+                      </span>
+                      {selectedItem.last_mention_date && (
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-4 w-4" />
+                          最近提及 {selectedItem.last_mention_date}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {/* Aliases display */}
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <Tag className="h-4 w-4 text-muted-foreground" />
+                    {aliasesData && aliasesData.aliases.length > 0 ? (
+                      aliasesData.aliases.map((alias, idx) => (
+                        <Badge key={idx} variant="outline" className="text-xs">
+                          {alias}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-xs text-muted-foreground">暂无别名</span>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => setAddAliasOpen(true)}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      添加别名
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {/* Financial indicators grid */}
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div className="text-center p-3 rounded-lg bg-accent/30">
+                      <div className="text-xs text-muted-foreground mb-1">最新价</div>
+                      <div className={`text-lg font-bold ${
+                        selectedItem.price_change_pct
+                          ? selectedItem.price_change_pct > 0 ? 'text-red-500' : selectedItem.price_change_pct < 0 ? 'text-green-500' : ''
+                          : ''
+                      }`}>
+                        {selectedItem.latest_price?.toFixed(2) || '-'}
+                      </div>
+                      {selectedItem.price_change_pct !== null && (
+                        <div className={`text-xs ${
+                          selectedItem.price_change_pct > 0 ? 'text-red-500' : selectedItem.price_change_pct < 0 ? 'text-green-500' : ''
+                        }`}>
+                          {selectedItem.price_change_pct > 0 ? '+' : ''}{selectedItem.price_change_pct.toFixed(2)}%
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-center p-3 rounded-lg bg-accent/30">
+                      <div className="text-xs text-muted-foreground mb-1">PE (TTM)</div>
+                      <div className="text-lg font-bold">
+                        {selectedItem.pe_ttm?.toFixed(2) || '-'}
+                      </div>
+                    </div>
+                    <div className="text-center p-3 rounded-lg bg-accent/30">
+                      <div className="text-xs text-muted-foreground mb-1">PB</div>
+                      <div className="text-lg font-bold">
+                        {selectedItem.pb?.toFixed(2) || '-'}
+                      </div>
+                    </div>
+                    <div className="text-center p-3 rounded-lg bg-accent/30">
+                      <div className="text-xs text-muted-foreground mb-1">股息率</div>
+                      <div className="text-lg font-bold">
+                        {selectedItem.dividend_yield ? `${selectedItem.dividend_yield.toFixed(2)}%` : '-'}
+                      </div>
+                    </div>
+                    <div className="text-center p-3 rounded-lg bg-accent/30">
+                      <div className="text-xs text-muted-foreground mb-1">市值</div>
+                      <div className="text-lg font-bold">
+                        {formatMarketCap(selectedItem.market_cap)}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* K-Line Chart with sentiment markers */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    K线图
+                    {sentimentData && sentimentData.markers.length > 0 && (
+                      <span className="text-sm font-normal text-muted-foreground">
+                        (点击蓝点查看相关舆情)
+                      </span>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ChartHeader quote={latestQuote ? {
+                    date: latestQuote.date,
+                    open: latestQuote.open,
+                    high: latestQuote.high,
+                    low: latestQuote.low,
+                    close: latestQuote.close,
+                    volume: latestQuote.volume || null,
+                    turnover: latestQuote.turnover || null,
+                    turnover_rate: null,
+                    pe_ttm: null,
+                    pb: null,
+                    market_cap: null,
+                  } : null} />
+                  {quotesData.length > 0 ? (
+                    <EChartsKLine
+                      data={quotesData}
+                      sentimentMarkers={sentimentData?.markers}
+                      height={400}
+                    />
+                  ) : (
+                    <div className="flex h-64 items-center justify-center text-muted-foreground">
+                      暂无行情数据
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
           ) : (
             <Card>
               <CardContent className="flex h-96 items-center justify-center text-muted-foreground">
-                选择一只股票查看K线图
+                选择一只股票查看K线图和财务指标
               </CardContent>
             </Card>
           )}
@@ -564,6 +754,43 @@ export default function Watchlist() {
               disabled={deleteGroupMutation.isPending}
             >
               删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add alias dialog */}
+      <Dialog open={addAliasOpen} onOpenChange={setAddAliasOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              为 {selectedItem?.symbol} {selectedItem?.stock_name && `(${selectedItem.stock_name})`} 添加别名
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Input
+              placeholder="输入别名（如：茅台、宁王）"
+              value={newAlias}
+              onChange={(e) => setNewAlias(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newAlias.trim()) {
+                  handleAddAlias()
+                }
+              }}
+            />
+            <p className="text-xs text-muted-foreground">
+              添加别名后，系统可自动识别文章中出现的该别名并关联到此股票
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddAliasOpen(false)}>
+              取消
+            </Button>
+            <Button
+              onClick={handleAddAlias}
+              disabled={!newAlias.trim() || addAliasMutation.isPending}
+            >
+              添加
             </Button>
           </DialogFooter>
         </DialogContent>

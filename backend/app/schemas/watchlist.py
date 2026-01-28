@@ -15,6 +15,18 @@ class WatchlistItemResponse(BaseModel):
     stock_name: str | None = None
     asset_type: str | None = None  # stock, etf, lof
 
+    # Financial indicators
+    latest_price: float | None = None
+    price_change_pct: float | None = None  # Daily change percentage
+    dividend_yield: float | None = None
+    pe_ttm: float | None = None
+    pb: float | None = None
+    market_cap: float | None = None
+
+    # Sentiment stats
+    mention_count: int = 0
+    last_mention_date: str | None = None
+
     class Config:
         from_attributes = True
 

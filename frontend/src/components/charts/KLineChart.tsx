@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
-import { createChart, IChartApi, CandlestickData, Time } from 'lightweight-charts'
-import type { Quote } from '@/types'
+import { createChart, IChartApi, CandlestickData, Time, ISeriesApi, SeriesMarker } from 'lightweight-charts'
+import type { Quote, SentimentMarker } from '@/types'
 
-type Period = '5d' | 'daily' | 'weekly' | 'monthly'
+type Period = '5d' | 'daily' | 'weekly' | 'monthly' | 'all'
 
 interface KLineChartProps {
   data: Quote[]
   height?: number
+  sentimentMarkers?: SentimentMarker[]
 }
 
 // Aggregate daily data into weekly/monthly candles
 function aggregateData(data: Quote[], period: Period): Quote[] {
-  if (period === 'daily' || data.length === 0) return data
+  if (period === 'daily' || period === 'all' || data.length === 0) return data
 
   if (period === '5d') {
     // Return last 5 trading days
@@ -80,9 +81,10 @@ const periodLabels: Record<Period, string> = {
   'daily': '日K',
   'weekly': '周K',
   'monthly': '月K',
+  'all': '成立以来',
 }
 
-export default function KLineChart({ data, height = 400 }: KLineChartProps) {
+export default function KLineChart({ data, height = 400, sentimentMarkers }: KLineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const [period, setPeriod] = useState<Period>('daily')
@@ -141,6 +143,31 @@ export default function KLineChart({ data, height = 400 }: KLineChartProps) {
 
     candleSeries.setData(chartData)
 
+    // Add sentiment markers if available (only for daily view)
+    if (sentimentMarkers && sentimentMarkers.length > 0 && period === 'daily') {
+      // Create a map of date -> high price for positioning markers
+      const dateHighMap = new Map<string, number>()
+      displayData.forEach((q) => {
+        dateHighMap.set(q.date, q.high)
+      })
+
+      // Create markers for sentiment data
+      const markers: SeriesMarker<Time>[] = sentimentMarkers
+        .filter((m) => dateHighMap.has(m.date))
+        .map((marker) => ({
+          time: marker.date as Time,
+          position: 'aboveBar' as const,
+          color: '#3b82f6', // Blue color for sentiment markers
+          shape: 'circle' as const,
+          text: marker.count > 1 ? `${marker.count}` : '',
+          size: Math.min(marker.count, 3), // Size based on count, max 3
+        }))
+
+      if (markers.length > 0) {
+        candleSeries.setMarkers(markers)
+      }
+    }
+
     // Add volume series
     const volumeSeries = chart.addHistogramSeries({
       color: '#3b82f6',
@@ -165,8 +192,34 @@ export default function KLineChart({ data, height = 400 }: KLineChartProps) {
 
     volumeSeries.setData(volumeData)
 
-    // Fit content
-    chart.timeScale().fitContent()
+    // Set visible range based on period
+    if (displayData.length > 0) {
+      const lastDate = new Date(displayData[displayData.length - 1].date)
+      let fromDate: Date
+
+      if (period === 'daily') {
+        // Daily K: show last 3 months
+        fromDate = new Date(lastDate)
+        fromDate.setMonth(fromDate.getMonth() - 3)
+      } else if (period === 'weekly') {
+        // Weekly K: show last 24 months
+        fromDate = new Date(lastDate)
+        fromDate.setMonth(fromDate.getMonth() - 24)
+      } else {
+        // For 5d, monthly, all: fit all content
+        chart.timeScale().fitContent()
+        fromDate = new Date(0) // Will be ignored since we already called fitContent
+      }
+
+      if (period === 'daily' || period === 'weekly') {
+        const fromDateStr = fromDate.toISOString().split('T')[0]
+        const toDateStr = lastDate.toISOString().split('T')[0]
+        chart.timeScale().setVisibleRange({
+          from: fromDateStr as Time,
+          to: toDateStr as Time,
+        })
+      }
+    }
 
     // Handle resize
     const handleResize = () => {
@@ -181,7 +234,7 @@ export default function KLineChart({ data, height = 400 }: KLineChartProps) {
       window.removeEventListener('resize', handleResize)
       chart.remove()
     }
-  }, [displayData, height])
+  }, [displayData, height, sentimentMarkers, period])
 
   return (
     <div className="w-full">

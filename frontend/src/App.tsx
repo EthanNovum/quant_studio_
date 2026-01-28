@@ -8,6 +8,11 @@ import Screener from '@/pages/Screener'
 import TradeReview from '@/pages/TradeReview'
 import Search from '@/pages/Search'
 import StockDetail from '@/pages/StockDetail'
+import Sentiment from '@/pages/Sentiment'
+import SentimentAuthors from '@/pages/SentimentAuthors'
+import SentimentSymbols from '@/pages/SentimentSymbols'
+import ArticleDetail from '@/pages/ArticleDetail'
+import Settings from '@/pages/Settings'
 import LoginPage from '@/pages/LoginPage'
 import { authApi } from '@/services/authApi'
 
@@ -46,6 +51,11 @@ function App() {
           <Route path="/trade_review" element={<TradeReview />} />
           <Route path="/search" element={<Search />} />
           <Route path="/search/:symbol" element={<StockDetail />} />
+          <Route path="/sentiment" element={<Sentiment />} />
+          <Route path="/sentiment/authors" element={<SentimentAuthors />} />
+          <Route path="/sentiment/symbols" element={<SentimentSymbols />} />
+          <Route path="/sentiment/:contentId" element={<ArticleDetail />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </MainLayout>
       <Toaster />

@@ -7,6 +7,18 @@ export interface WatchlistItem {
   added_at: string
   stock_name: string | null
   asset_type: string | null  // stock, etf, lof
+
+  // Financial indicators
+  latest_price: number | null
+  price_change_pct: number | null
+  dividend_yield: number | null
+  pe_ttm: number | null
+  pb: number | null
+  market_cap: number | null
+
+  // Sentiment stats
+  mention_count: number
+  last_mention_date: string | null
 }
 
 export interface WatchlistGroup {

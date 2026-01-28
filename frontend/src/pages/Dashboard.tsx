@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { TrendingUp, TrendingDown, Wallet, FileText } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { TrendingUp, TrendingDown, Wallet, FileText, ExternalLink } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getPositions, getTrades } from '@/services/transactionApi'
 import { formatNumber, formatPercent } from '@/lib/utils'
@@ -100,10 +101,19 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-4">
                 {positionsList.map((pos) => (
-                  <div key={pos.code} className="flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">{pos.code}</div>
-                      <div className="text-sm text-muted-foreground">{pos.name}</div>
+                  <Link
+                    key={pos.code}
+                    to={`/search/${pos.code}`}
+                    className="flex items-center justify-between rounded-md p-2 -m-2 hover:bg-accent transition-colors group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <div className="font-medium flex items-center gap-1">
+                          {pos.code}
+                          <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground" />
+                        </div>
+                        <div className="text-sm text-muted-foreground">{pos.name}</div>
+                      </div>
                     </div>
                     <div className="text-right">
                       <div className={pos.unrealized_pnl_pct && pos.unrealized_pnl_pct >= 0 ? 'text-up' : 'text-down'}>
@@ -111,7 +121,7 @@ export default function Dashboard() {
                       </div>
                       <div className="text-sm text-muted-foreground">{formatNumber(pos.unrealized_pnl)}</div>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}
