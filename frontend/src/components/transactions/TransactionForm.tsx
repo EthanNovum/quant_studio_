@@ -78,14 +78,15 @@ export default function TransactionForm() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>新建交易记录</CardTitle>
+      <CardHeader className="pb-3 sm:pb-6">
+        <CardTitle className="text-base sm:text-lg">新建交易记录</CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2 space-y-2">
-              <Label>股票代码</Label>
+        <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
+          {/* Mobile: single column, Tablet+: two columns */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div className="sm:col-span-2 space-y-2">
+              <Label className="text-sm">股票代码</Label>
               <StockSearch
                 onSelect={handleStockSelect}
                 placeholder={selectedStock ? `${selectedStock.code} - ${selectedStock.name}` : '搜索股票...'}
@@ -93,9 +94,9 @@ export default function TransactionForm() {
             </div>
 
             <div className="space-y-2">
-              <Label>操作类型</Label>
+              <Label className="text-sm">操作类型</Label>
               <Select value={action} onValueChange={(v) => setAction(v as 'BUY' | 'SELL' | 'DIVIDEND')}>
-                <SelectTrigger>
+                <SelectTrigger className="h-10 sm:h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -107,36 +108,38 @@ export default function TransactionForm() {
             </div>
 
             <div className="space-y-2">
-              <Label>日期</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Label className="text-sm">日期</Label>
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-10 sm:h-9" />
             </div>
 
             <div className="space-y-2">
-              <Label>价格</Label>
+              <Label className="text-sm">价格</Label>
               <Input
                 type="number"
                 step="0.001"
                 placeholder="0.000"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
+                className="h-10 sm:h-9"
               />
             </div>
 
             <div className="space-y-2">
-              <Label>数量</Label>
+              <Label className="text-sm">数量</Label>
               <Input
                 type="number"
                 step="100"
                 placeholder="0"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
+                className="h-10 sm:h-9"
               />
             </div>
 
-            <div className="col-span-2 space-y-2">
-              <Label>交易理由 (可选)</Label>
+            <div className="sm:col-span-2 space-y-2">
+              <Label className="text-sm">交易理由 (可选)</Label>
               <textarea
-                className="flex min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="flex min-h-16 sm:min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 placeholder="记录你的交易逻辑..."
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
@@ -144,7 +147,7 @@ export default function TransactionForm() {
             </div>
           </div>
 
-          <Button type="submit" className="w-full" disabled={!selectedStock || !price || !quantity || mutation.isPending}>
+          <Button type="submit" className="w-full h-10 sm:h-9 text-sm" disabled={!selectedStock || !price || !quantity || mutation.isPending}>
             {mutation.isPending ? '提交中...' : '添加记录'}
           </Button>
         </form>

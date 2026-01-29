@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Newspaper,
   Settings,
+  X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/store'
@@ -25,45 +26,72 @@ const navItems = [
 ]
 
 export default function Sidebar() {
-  const { isCollapsed, toggle } = useSidebarStore()
+  const { isCollapsed, toggle, isMobileOpen, setMobileOpen } = useSidebarStore()
+
+  const handleNavClick = () => {
+    // Close mobile sidebar when navigating
+    if (isMobileOpen) {
+      setMobileOpen(false)
+    }
+  }
 
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-border bg-card transition-all duration-300',
-        isCollapsed ? 'w-16' : 'w-56'
+        'fixed left-0 top-0 z-50 flex h-screen flex-col border-r border-border bg-card transition-all duration-300',
+        // Desktop styles
+        'hidden md:flex',
+        isCollapsed ? 'md:w-16' : 'md:w-56',
+        // Mobile styles - slide in from left
+        isMobileOpen && 'flex w-64 shadow-xl'
       )}
     >
       {/* Logo */}
-      <div className="flex h-14 items-center border-b border-border px-4">
-        {!isCollapsed && <span className="text-lg font-bold text-primary">AlphaNote</span>}
-        {isCollapsed && <span className="text-lg font-bold text-primary">A</span>}
+      <div className="flex h-14 items-center justify-between border-b border-border px-4">
+        <span className={cn(
+          'text-lg font-bold text-primary',
+          isCollapsed && 'md:hidden'
+        )}>
+          {isCollapsed ? 'A' : 'AlphaNote'}
+        </span>
+        {/* Mobile close button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="md:hidden h-8 w-8"
+          onClick={() => setMobileOpen(false)}
+        >
+          <X className="h-5 w-5" />
+        </Button>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 p-2">
+      <nav className="flex-1 space-y-1 overflow-y-auto p-2">
         {navItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
+            onClick={handleNavClick}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                'flex items-center gap-3 rounded-lg px-3 py-3 text-sm transition-colors',
                 isActive
                   ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                isCollapsed && 'justify-center px-2'
+                isCollapsed && 'md:justify-center md:px-2',
+                // Mobile: larger touch targets
+                'md:py-2'
               )
             }
           >
             <item.icon className="h-5 w-5 shrink-0" />
-            {!isCollapsed && <span>{item.label}</span>}
+            <span className={cn(isCollapsed && 'md:hidden')}>{item.label}</span>
           </NavLink>
         ))}
       </nav>
 
-      {/* Toggle button */}
-      <div className="border-t border-border p-2">
+      {/* Toggle button - desktop only */}
+      <div className="hidden border-t border-border p-2 md:block">
         <Button variant="ghost" size="icon" className="w-full" onClick={toggle}>
           {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
         </Button>

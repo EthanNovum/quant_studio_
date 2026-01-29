@@ -50,15 +50,30 @@ function truncateText(text: string | null, maxLength: number = 200): string {
   return text.slice(0, maxLength) + '...'
 }
 
+// Hook to detect mobile viewport
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  return isMobile
+}
+
 type ViewMode = 'card' | 'list'
 type SortBy = 'time' | 'votes'
 type SortOrder = 'desc' | 'asc'
 
 export default function Sentiment() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const isMobile = useIsMobile()
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
+  // Mobile defaults to card view, desktop defaults to list view
+  const [viewMode, setViewMode] = useState<ViewMode>(() => window.innerWidth < 768 ? 'card' : 'list')
   const [sortBy, setSortBy] = useState<SortBy>('time')
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
   const [selectedStock, setSelectedStock] = useState<string>(searchParams.get('stock') || '')
@@ -125,12 +140,12 @@ export default function Sentiment() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">舆情仪表盘</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-xl sm:text-2xl font-bold">舆情仪表盘</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">
             知乎文章与回答 · 共 {data?.total || 0} 篇
           </p>
         </div>
@@ -139,39 +154,40 @@ export default function Sentiment() {
         <div className="flex items-center gap-2 flex-wrap">
           {/* Quick links to authors and symbols pages */}
           <Link to="/sentiment/authors">
-            <Button variant="outline" size="sm" className="gap-1">
-              <Users className="h-4 w-4" />
-              按创作者
+            <Button variant="outline" size="sm" className="gap-1 h-8 sm:h-9 text-xs sm:text-sm">
+              <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <span className="hidden xs:inline">按</span>创作者
             </Button>
           </Link>
           <Link to="/sentiment/symbols">
-            <Button variant="outline" size="sm" className="gap-1">
-              <TrendingUp className="h-4 w-4" />
-              按股票
+            <Button variant="outline" size="sm" className="gap-1 h-8 sm:h-9 text-xs sm:text-sm">
+              <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <span className="hidden xs:inline">按</span>股票
             </Button>
           </Link>
 
-          <div className="h-6 w-px bg-border mx-1" />
-
-          {/* View mode toggle */}
-          <Button
-            variant={viewMode === 'card' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setViewMode('card')}
-            className="gap-1"
-          >
-            <LayoutGrid className="h-4 w-4" />
-            卡片
-          </Button>
-          <Button
-            variant={viewMode === 'list' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setViewMode('list')}
-            className="gap-1"
-          >
-            <List className="h-4 w-4" />
-            列表
-          </Button>
+          {/* View mode toggle - hidden on mobile, only show card toggle on desktop */}
+          <div className="hidden md:flex items-center gap-1">
+            <div className="h-6 w-px bg-border mx-1" />
+            <Button
+              variant={viewMode === 'card' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setViewMode('card')}
+              className="gap-1"
+            >
+              <LayoutGrid className="h-4 w-4" />
+              卡片
+            </Button>
+            <Button
+              variant={viewMode === 'list' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setViewMode('list')}
+              className="gap-1"
+            >
+              <List className="h-4 w-4" />
+              列表
+            </Button>
+          </div>
         </div>
       </div>
 

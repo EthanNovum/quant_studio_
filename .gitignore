@@ -5,6 +5,7 @@ __pycache__/
 *.so
 .Python
 venv/
+.venv/
 env/
 .env
 
@@ -35,3 +36,13 @@ build/
 *.sqlite3
 *.db
 backend/data/
+
+# Browser data (MediaCrawler)
+browser_data/
+
+# Claude configuration
+.claude/
+
+# Lock files
+uv.lock
+bun.lock

@@ -102,76 +102,79 @@ export default function TransactionList() {
   return (
     <>
       <Card>
-        <CardHeader>
-          <CardTitle>交易流水</CardTitle>
+        <CardHeader className="pb-3 sm:pb-6">
+          <CardTitle className="text-base sm:text-lg">交易流水</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-2 sm:px-6">
           {isLoading ? (
             <div className="py-8 text-center text-muted-foreground">加载中...</div>
           ) : !data?.length ? (
             <div className="py-8 text-center text-muted-foreground">暂无交易记录</div>
           ) : (
             <TooltipProvider>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>日期</TableHead>
-                    <TableHead>代码</TableHead>
-                    <TableHead>名称</TableHead>
-                    <TableHead>操作</TableHead>
-                    <TableHead className="text-right">价格</TableHead>
-                    <TableHead className="text-right">数量</TableHead>
-                    <TableHead className="text-right">金额</TableHead>
-                    <TableHead></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.map((tx) => (
-                    <TableRow key={tx.id}>
-                      <TableCell className="text-muted-foreground">{tx.date}</TableCell>
-                      <TableCell className="font-medium">{tx.code}</TableCell>
-                      <TableCell>{tx.name || '-'}</TableCell>
-                      <TableCell>{getActionLabel(tx.action)}</TableCell>
-                      <TableCell className="text-right">{formatNumber(tx.price, 3)}</TableCell>
-                      <TableCell className="text-right">{tx.quantity}</TableCell>
-                      <TableCell className="text-right">{formatNumber(tx.price * tx.quantity, 3)}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          {tx.reason && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent side="left" className="max-w-xs">
-                                <p className="text-sm">{tx.reason}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => handleEdit(tx)}
-                          >
-                            <Pencil className="h-4 w-4 text-muted-foreground" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => deleteMutation.mutate(tx.id)}
-                            disabled={deleteMutation.isPending}
-                          >
-                            <Trash2 className="h-4 w-4 text-muted-foreground" />
-                          </Button>
-                        </div>
-                      </TableCell>
+              {/* Scrollable table container for mobile */}
+              <div className="overflow-x-auto -mx-2 sm:mx-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="whitespace-nowrap text-xs sm:text-sm">日期</TableHead>
+                      <TableHead className="whitespace-nowrap text-xs sm:text-sm">代码</TableHead>
+                      <TableHead className="whitespace-nowrap text-xs sm:text-sm hidden sm:table-cell">名称</TableHead>
+                      <TableHead className="whitespace-nowrap text-xs sm:text-sm">操作</TableHead>
+                      <TableHead className="whitespace-nowrap text-xs sm:text-sm text-right">价格</TableHead>
+                      <TableHead className="whitespace-nowrap text-xs sm:text-sm text-right">数量</TableHead>
+                      <TableHead className="whitespace-nowrap text-xs sm:text-sm text-right hidden md:table-cell">金额</TableHead>
+                      <TableHead className="w-24"></TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {data.map((tx) => (
+                      <TableRow key={tx.id}>
+                        <TableCell className="text-muted-foreground text-xs sm:text-sm whitespace-nowrap">{tx.date}</TableCell>
+                        <TableCell className="font-medium text-xs sm:text-sm">{tx.code}</TableCell>
+                        <TableCell className="text-xs sm:text-sm hidden sm:table-cell">{tx.name || '-'}</TableCell>
+                        <TableCell className="text-xs sm:text-sm">{getActionLabel(tx.action)}</TableCell>
+                        <TableCell className="text-right text-xs sm:text-sm">{formatNumber(tx.price, 3)}</TableCell>
+                        <TableCell className="text-right text-xs sm:text-sm">{tx.quantity}</TableCell>
+                        <TableCell className="text-right text-xs sm:text-sm hidden md:table-cell">{formatNumber(tx.price * tx.quantity, 3)}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-0.5 sm:gap-1">
+                            {tx.reason && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                                    <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="max-w-xs">
+                                  <p className="text-sm">{tx.reason}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleEdit(tx)}
+                            >
+                              <Pencil className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => deleteMutation.mutate(tx.id)}
+                              disabled={deleteMutation.isPending}
+                            >
+                              <Trash2 className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </TooltipProvider>
           )}
         </CardContent>
