@@ -1,0 +1,353 @@
+import { useState } from 'react'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  ArrowLeft,
+  ExternalLink,
+  User,
+  Users,
+  FileText,
+  MessageSquare,
+  ThumbsUp,
+  Calendar,
+  Clock,
+} from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
+import CreatorTimeline from '@/components/charts/CreatorTimeline'
+import { getCreatorDetail, getArticles, toggleCreator } from '@/services/sentimentApi'
+import { useToastStore } from '@/store'
+
+function formatNumber(value: number): string {
+  if (value >= 10000) {
+    return (value / 10000).toFixed(1) + '万'
+  }
+  return value.toString()
+}
+
+function formatDate(timestamp: number): string {
+  if (!timestamp) return '-'
+  const date = new Date(timestamp * 1000)
+  return date.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+export default function CreatorDetail() {
+  const { userId } = useParams<{ userId: string }>()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const { addToast } = useToastStore()
+
+  const [page, setPage] = useState(1)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const pageSize = 20
+
+  const { data: creator, isLoading: creatorLoading } = useQuery({
+    queryKey: ['creator-detail', userId],
+    queryFn: () => getCreatorDetail(userId!),
+    enabled: !!userId,
+  })
+
+  const { data: articlesData, isLoading: articlesLoading } = useQuery({
+    queryKey: ['creator-articles', userId, page, pageSize],
+    queryFn: () =>
+      getArticles({
+        author_id: userId,
+        page,
+        page_size: pageSize,
+        sort_by: 'time',
+        sort_order: 'desc',
+      }),
+    enabled: !!userId,
+  })
+
+  const toggleMutation = useMutation({
+    mutationFn: toggleCreator,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['creator-detail', userId] })
+      queryClient.invalidateQueries({ queryKey: ['creators'] })
+      addToast({ title: '关注状态已更新', type: 'success' })
+    },
+    onError: () => {
+      addToast({ title: '操作失败', type: 'error' })
+    },
+  })
+
+  const handleDateClick = (date: string, articleIds: string[]) => {
+    setSelectedDate(date)
+    // Scroll to articles section
+    document.getElementById('articles-section')?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  // Filter articles by selected date if any
+  const filteredArticles = selectedDate
+    ? articlesData?.items.filter((article) => {
+        const articleDate = new Date(article.created_time * 1000)
+          .toISOString()
+          .split('T')[0]
+        return articleDate === selectedDate
+      })
+    : articlesData?.items
+
+  if (creatorLoading) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <div className="text-muted-foreground">加载中...</div>
+      </div>
+    )
+  }
+
+  if (!creator) {
+    return (
+      <div className="flex h-96 flex-col items-center justify-center gap-4">
+        <div className="text-muted-foreground">创作者不存在</div>
+        <Button variant="outline" onClick={() => navigate(-1)}>
+          返回
+        </Button>
+      </div>
+    )
+  }
+
+  const totalPages = articlesData ? Math.ceil(articlesData.total / pageSize) : 0
+
+  return (
+    <div className="space-y-6">
+      {/* Back button */}
+      <Button variant="ghost" onClick={() => navigate('/creators')} className="gap-2">
+        <ArrowLeft className="h-4 w-4" />
+        返回创作者列表
+      </Button>
+
+      {/* Creator profile card */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex flex-col sm:flex-row items-start gap-6">
+            {/* Avatar */}
+            <div className="shrink-0">
+              {creator.user_avatar ? (
+                <img
+                  src={creator.user_avatar}
+                  alt={creator.user_nickname}
+                  className="h-24 w-24 rounded-full object-cover"
+                />
+              ) : (
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-primary/10">
+                  <User className="h-12 w-12 text-primary" />
+                </div>
+              )}
+            </div>
+
+            {/* Info */}
+            <div className="flex-1 min-w-0 space-y-4">
+              {/* Name and follow status */}
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-2xl font-bold">{creator.user_nickname}</h1>
+                {creator.is_active === 1 ? (
+                  <Badge variant="default">已关注</Badge>
+                ) : (
+                  <Badge variant="secondary">未关注</Badge>
+                )}
+              </div>
+
+              {/* Stats */}
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Users className="h-4 w-4" />
+                  {formatNumber(creator.fans)} 粉丝
+                </span>
+                <span className="flex items-center gap-1">
+                  <MessageSquare className="h-4 w-4" />
+                  {creator.answer_count} 回答
+                </span>
+                <span className="flex items-center gap-1">
+                  <FileText className="h-4 w-4" />
+                  {creator.article_count} 文章
+                </span>
+                <span className="flex items-center gap-1">
+                  <ThumbsUp className="h-4 w-4" />
+                  {formatNumber(creator.voteup_count)} 获赞
+                </span>
+              </div>
+
+              {/* Database stats */}
+              <div className="text-sm text-muted-foreground">
+                已收录 <span className="font-medium text-foreground">{creator.total_articles_in_db}</span> 篇文章
+                {creator.last_crawled_at && (
+                  <span className="ml-4">
+                    <Clock className="h-3 w-3 inline mr-1" />
+                    最后同步: {new Date(creator.last_crawled_at).toLocaleDateString('zh-CN')}
+                  </span>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex flex-wrap items-center gap-3">
+                {creator.user_link && (
+                  <a
+                    href={creator.user_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Button variant="outline" className="gap-2">
+                      <ExternalLink className="h-4 w-4" />
+                      查看主页
+                    </Button>
+                  </a>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">关注同步</span>
+                  <Switch
+                    checked={creator.is_active === 1}
+                    onCheckedChange={() => toggleMutation.mutate(creator.user_id)}
+                    disabled={toggleMutation.isPending}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Timeline chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            发布时间轴
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CreatorTimeline
+            data={creator.timeline}
+            height={300}
+            onDateClick={handleDateClick}
+          />
+          {selectedDate && (
+            <div className="mt-4 flex items-center gap-2">
+              <Badge variant="secondary">
+                已筛选: {selectedDate}
+              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedDate(null)}
+              >
+                清除筛选
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Articles list */}
+      <Card id="articles-section">
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              文章列表
+            </span>
+            {articlesData && (
+              <span className="text-sm font-normal text-muted-foreground">
+                共 {articlesData.total} 篇
+              </span>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {articlesLoading ? (
+            <div className="flex h-32 items-center justify-center">
+              <div className="text-muted-foreground">加载中...</div>
+            </div>
+          ) : filteredArticles && filteredArticles.length > 0 ? (
+            <div className="space-y-3">
+              {filteredArticles.map((article) => (
+                <Link
+                  key={article.content_id}
+                  to={`/sentiment/${article.content_id}`}
+                  className="block"
+                >
+                  <div className="rounded-lg border p-4 transition-all hover:shadow-md hover:border-primary/50">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-medium line-clamp-2 mb-2">
+                          {article.title}
+                        </h3>
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {formatDate(article.created_time)}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <ThumbsUp className="h-3 w-3" />
+                            {article.voteup_count}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <MessageSquare className="h-3 w-3" />
+                            {article.comment_count}
+                          </span>
+                          <Badge variant="outline" className="text-xs">
+                            {article.content_type === 'answer' ? '回答' : '文章'}
+                          </Badge>
+                        </div>
+                        {article.related_stocks && article.related_stocks.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {article.related_stocks.slice(0, 5).map((symbol) => (
+                              <Badge key={symbol} variant="secondary" className="text-xs">
+                                {symbol}
+                              </Badge>
+                            ))}
+                            {article.related_stocks.length > 5 && (
+                              <Badge variant="secondary" className="text-xs">
+                                +{article.related_stocks.length - 5}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+
+              {/* Pagination */}
+              {!selectedDate && totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 pt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                  >
+                    上一页
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    {page} / {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                  >
+                    下一页
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex h-32 items-center justify-center text-muted-foreground">
+              {selectedDate ? `${selectedDate} 没有文章` : '暂无文章'}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

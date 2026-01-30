@@ -295,3 +295,39 @@ def delete_config(key: str, db: Session = Depends(get_db)):
         db.delete(config)
         db.commit()
     return {"message": "Config deleted"}
+
+
+@router.post("/test-cookies")
+def test_cookies(db: Session = Depends(get_db)):
+    """Test if stored Zhihu cookies are valid."""
+    import httpx
+
+    config = db.query(CrawlerConfig).filter(CrawlerConfig.key == "zhihu_cookies").first()
+    if not config or not config.value:
+        return {"valid": False, "message": "未配置 Cookie"}
+
+    try:
+        # Test by fetching Zhihu user info API
+        headers = {
+            "Cookie": config.value,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        }
+        response = httpx.get(
+            "https://www.zhihu.com/api/v4/me",
+            headers=headers,
+            timeout=10.0,
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            name = data.get("name", "未知用户")
+            return {"valid": True, "message": f"Cookie 有效，当前用户: {name}"}
+        elif response.status_code == 401:
+            return {"valid": False, "message": "Cookie 已过期或无效"}
+        else:
+            return {"valid": False, "message": f"验证失败，状态码: {response.status_code}"}
+
+    except httpx.TimeoutException:
+        return {"valid": False, "message": "请求超时，请检查网络连接"}
+    except Exception as e:
+        return {"valid": False, "message": f"验证出错: {str(e)}"}

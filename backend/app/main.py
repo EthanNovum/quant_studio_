@@ -8,10 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import engine, Base
 from app.routers import auth, progress, quotes, screeners, stocks, trades, transactions, watchlist
-from app.routers import aliases, sentiment, sync
+from app.routers import aliases, sentiment, sync, ai
 
 # Import all models to ensure they are registered with Base
-from app.models import stock, transaction, watchlist as watchlist_model, screener, quote, zhihu, stock_alias  # noqa: F401
+from app.models import stock, transaction, watchlist as watchlist_model, screener, quote, zhihu, stock_alias, ai_insight  # noqa: F401
 
 
 @asynccontextmanager
@@ -51,6 +51,7 @@ app.include_router(progress.router, prefix="/api", tags=["Progress"])
 app.include_router(aliases.router, prefix="/api", tags=["Aliases"])
 app.include_router(sentiment.router, prefix="/api", tags=["Sentiment"])
 app.include_router(sync.router, prefix="/api", tags=["Sync"])
+app.include_router(ai.router, prefix="/api", tags=["AI"])
 
 
 @app.get("/")

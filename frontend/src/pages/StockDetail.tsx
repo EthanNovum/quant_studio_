@@ -1,7 +1,7 @@
 import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useRef, useCallback, useState, useEffect } from 'react'
-import { AlertTriangle, Newspaper, ChevronDown, ChevronUp, Calendar, ThumbsUp, User, X } from 'lucide-react'
+import { AlertTriangle, Newspaper, ChevronDown, ChevronUp, Calendar, ThumbsUp, User, X, Brain, TrendingUp, TrendingDown, Minus, Tag } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -10,7 +10,8 @@ import ChartHeader from '@/components/charts/ChartHeader'
 import { getStockDetail } from '@/services/stockApi'
 import { getQuotes } from '@/services/quoteApi'
 import { getSentimentMarkers, getArticles, getArticle } from '@/services/sentimentApi'
-import type { ZhihuContent } from '@/types'
+import { getEnhancedSentimentMarkers, getStockInsightSummary } from '@/services/aiApi'
+import type { ZhihuContent, EnhancedSentimentMarker } from '@/types'
 
 function formatDate(timestamp: number): string {
   if (!timestamp) return '-'
@@ -43,6 +44,20 @@ export default function StockDetail() {
   const { data: sentimentData } = useQuery({
     queryKey: ['sentiment-markers', symbol],
     queryFn: () => getSentimentMarkers(symbol!),
+    enabled: !!symbol,
+  })
+
+  // AI Enhanced sentiment markers
+  const { data: enhancedSentimentData } = useQuery({
+    queryKey: ['enhanced-sentiment-markers', symbol],
+    queryFn: () => getEnhancedSentimentMarkers(symbol!),
+    enabled: !!symbol,
+  })
+
+  // AI Insight summary
+  const { data: insightSummary } = useQuery({
+    queryKey: ['stock-insight-summary', symbol],
+    queryFn: () => getStockInsightSummary(symbol!, 30),
     enabled: !!symbol,
   })
 
@@ -140,6 +155,107 @@ export default function StockDetail() {
                 <li key={idx}>{reason}</li>
               ))}
             </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* AI Insight Summary */}
+      {insightSummary && insightSummary.insight_count > 0 && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2">
+              <Brain className="h-5 w-5 text-primary" />
+              AI 舆情分析
+              <Badge variant="secondary" className="ml-2">
+                近 {insightSummary.period_days} 天
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Sentiment Overview */}
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                {insightSummary.avg_sentiment_score !== null && (
+                  <>
+                    {insightSummary.avg_sentiment_score >= 7 ? (
+                      <TrendingUp className="h-6 w-6 text-red-500" />
+                    ) : insightSummary.avg_sentiment_score <= 4 ? (
+                      <TrendingDown className="h-6 w-6 text-green-500" />
+                    ) : (
+                      <Minus className="h-6 w-6 text-gray-500" />
+                    )}
+                    <div>
+                      <div className="text-2xl font-bold">
+                        {insightSummary.avg_sentiment_score.toFixed(1)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">平均情绪分</div>
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="flex-1 grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-md bg-red-500/10 p-2">
+                  <div className="text-lg font-bold text-red-500">
+                    {insightSummary.sentiment_distribution['Bullish'] || 0}
+                  </div>
+                  <div className="text-xs text-muted-foreground">看多</div>
+                </div>
+                <div className="rounded-md bg-gray-500/10 p-2">
+                  <div className="text-lg font-bold text-gray-500">
+                    {insightSummary.sentiment_distribution['Neutral'] || 0}
+                  </div>
+                  <div className="text-xs text-muted-foreground">中性</div>
+                </div>
+                <div className="rounded-md bg-green-500/10 p-2">
+                  <div className="text-lg font-bold text-green-500">
+                    {insightSummary.sentiment_distribution['Bearish'] || 0}
+                  </div>
+                  <div className="text-xs text-muted-foreground">看空</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Top Tags */}
+            {insightSummary.top_tags.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-2 text-sm text-muted-foreground">
+                  <Tag className="h-4 w-4" />
+                  热门标签
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {insightSummary.top_tags.map((tag, idx) => (
+                    <Badge key={idx} variant="outline">
+                      {tag.tag}
+                      <span className="ml-1 text-muted-foreground">({tag.count})</span>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Recent Summaries */}
+            {insightSummary.summaries.length > 0 && (
+              <div>
+                <div className="text-sm text-muted-foreground mb-2">AI 观点摘要</div>
+                <div className="space-y-2">
+                  {insightSummary.summaries.slice(0, 3).map((item, idx) => (
+                    <div key={idx} className="flex items-start gap-2 text-sm">
+                      <Badge
+                        variant={item.label === 'Bullish' ? 'destructive' : item.label === 'Bearish' ? 'default' : 'secondary'}
+                        className={`shrink-0 ${item.label === 'Bullish' ? 'bg-red-500' : item.label === 'Bearish' ? 'bg-green-500' : ''}`}
+                      >
+                        {item.score}
+                      </Badge>
+                      <span>{item.summary}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="text-xs text-muted-foreground">
+              基于 {insightSummary.insight_count} 条 AI 分析结果
+            </div>
           </CardContent>
         </Card>
       )}

@@ -37,6 +37,12 @@ class Settings(BaseSettings):
         os.environ.get("LOG_PATH", Path(__file__).parent.parent / "data" / "update.log")
     )
 
+    # AI/LLM Configuration
+    openai_api_key: Optional[str] = os.environ.get("OPENAI_API_KEY", None)
+    openai_base_url: Optional[str] = os.environ.get("OPENAI_BASE_URL", None)  # For DeepSeek or other compatible APIs
+    ai_model: str = os.environ.get("AI_MODEL", "gpt-4o-mini")  # Default model
+    ai_max_tokens: int = int(os.environ.get("AI_MAX_TOKENS", "1000"))
+
     def get_database_url(self) -> str:
         """Get the database URL, falling back to SQLite if not configured."""
         if self.database_url:

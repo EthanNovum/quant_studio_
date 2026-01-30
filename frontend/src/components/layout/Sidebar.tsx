@@ -10,6 +10,8 @@ import {
   Newspaper,
   Settings,
   X,
+  Brain,
+  Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/store'
@@ -22,6 +24,8 @@ const navItems = [
   { path: '/trade_review', icon: FileText, label: '交易复盘' },
   { path: '/search', icon: Search, label: '搜索' },
   { path: '/sentiment', icon: Newspaper, label: '舆情' },
+  { path: '/daily-review', icon: Brain, label: 'AI复盘' },
+  { path: '/ai-settings', icon: Zap, label: 'AI设置' },
   { path: '/settings', icon: Settings, label: '设置' },
 ]
 

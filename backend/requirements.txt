@@ -18,6 +18,6 @@ python-multipart>=0.0.6
 akshare>=1.12.0
 pandas>=2.0.0
 
-# Crawler dependencies
+# HTTP client (used for crawler and AI API calls)
 httpx>=0.25.0
 parsel>=1.8.0

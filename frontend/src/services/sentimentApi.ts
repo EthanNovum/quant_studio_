@@ -3,6 +3,7 @@ import type {
   ZhihuContent,
   ZhihuContentListResponse,
   ZhihuCreator,
+  ZhihuCreatorDetail,
   SentimentMarkersResponse,
   StockWithAliases,
   SyncStatus,
@@ -68,6 +69,18 @@ export async function deleteCreator(userId: string): Promise<void> {
 
 export async function toggleCreator(userId: string): Promise<{ is_active: number }> {
   const { data } = await api.patch<{ is_active: number }>(`/sentiment/creators/${userId}/toggle`)
+  return data
+}
+
+export async function getCreatorDetail(userId: string): Promise<ZhihuCreatorDetail> {
+  const { data } = await api.get<ZhihuCreatorDetail>(`/sentiment/creators/${userId}`)
+  return data
+}
+
+export async function batchToggleCreators(action: 'follow_all' | 'unfollow_all'): Promise<{ message: string; is_active: number }> {
+  const { data } = await api.patch<{ message: string; is_active: number }>('/sentiment/creators/batch-toggle', null, {
+    params: { action },
+  })
   return data
 }
 
@@ -138,4 +151,9 @@ export async function getConfig(key: string): Promise<{ key: string; value: stri
 
 export async function setConfig(key: string, value: string): Promise<void> {
   await api.put('/sync/config', { key, value })
+}
+
+export async function testCookies(): Promise<{ valid: boolean; message: string }> {
+  const { data } = await api.post<{ valid: boolean; message: string }>('/sync/test-cookies')
+  return data
 }

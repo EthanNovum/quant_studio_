@@ -164,3 +164,24 @@ class CrawlTimeRangeRequest(BaseModel):
     start_date: Optional[str] = None  # YYYY-MM-DD format
     end_date: Optional[str] = None  # YYYY-MM-DD format
     creator_ids: Optional[List[str]] = None  # List of user_ids to crawl (None = all active)
+
+
+# ========== Creator Detail Schemas ==========
+
+class CreatorArticleTimelineItem(BaseModel):
+    """Article count per date for timeline chart."""
+    date: str  # YYYY-MM-DD
+    count: int
+    article_ids: List[str]
+    titles: List[str]
+
+
+class ZhihuCreatorDetailResponse(ZhihuCreatorResponse):
+    """Extended creator response with timeline data."""
+    timeline: List[CreatorArticleTimelineItem]
+    total_articles_in_db: int
+
+
+class BatchToggleRequest(BaseModel):
+    """Request body for batch toggle creators."""
+    action: str  # 'follow_all' or 'unfollow_all'

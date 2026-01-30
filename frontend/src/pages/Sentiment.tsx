@@ -153,7 +153,7 @@ export default function Sentiment() {
         {/* Quick links and view mode toggle */}
         <div className="flex items-center gap-2 flex-wrap">
           {/* Quick links to authors and symbols pages */}
-          <Link to="/sentiment/authors">
+          <Link to="/creators">
             <Button variant="outline" size="sm" className="gap-1 h-8 sm:h-9 text-xs sm:text-sm">
               <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               <span className="hidden xs:inline">按</span>创作者

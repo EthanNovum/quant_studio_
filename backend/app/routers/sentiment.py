@@ -13,6 +13,8 @@ from app.schemas.zhihu import (
     ZhihuContentListResponse,
     ZhihuCreatorCreate,
     ZhihuCreatorResponse,
+    ZhihuCreatorDetailResponse,
+    CreatorArticleTimelineItem,
     SentimentMarker,
     SentimentMarkersResponse,
 )
@@ -236,6 +238,71 @@ def toggle_creator(user_id: str, db: Session = Depends(get_db)):
     db.commit()
 
     return {"is_active": creator.is_active}
+
+
+@router.patch("/creators/batch-toggle")
+def batch_toggle_creators(action: str = Query(..., pattern="^(follow_all|unfollow_all)$"), db: Session = Depends(get_db)):
+    """Batch toggle all creators to active (follow) or inactive (unfollow)."""
+    new_status = 1 if action == "follow_all" else 0
+    count = db.query(ZhihuCreator).update({ZhihuCreator.is_active: new_status})
+    db.commit()
+    return {"message": f"Updated {count} creators", "is_active": new_status}
+
+
+@router.get("/creators/{user_id}", response_model=ZhihuCreatorDetailResponse)
+def get_creator_detail(user_id: str, db: Session = Depends(get_db)):
+    """Get detailed info for a single creator including article timeline."""
+    # Try to find by user_id first, then by url_token as fallback
+    creator = db.query(ZhihuCreator).filter(ZhihuCreator.user_id == user_id).first()
+    if not creator:
+        creator = db.query(ZhihuCreator).filter(ZhihuCreator.url_token == user_id).first()
+    if not creator:
+        raise HTTPException(status_code=404, detail="Creator not found")
+
+    # Get article timeline data
+    from datetime import datetime
+    result = db.execute(text("""
+        SELECT
+            DATE(datetime(created_time, 'unixepoch')) as date,
+            COUNT(*) as count,
+            GROUP_CONCAT(content_id) as article_ids,
+            GROUP_CONCAT(title, '|||') as titles
+        FROM zhihu_content
+        WHERE author_id = :author_id
+        GROUP BY DATE(datetime(created_time, 'unixepoch'))
+        ORDER BY date
+    """), {"author_id": creator.user_id})
+
+    timeline = []
+    total_articles = 0
+    for row in result:
+        article_ids = row[2].split(",") if row[2] else []
+        titles = row[3].split("|||") if row[3] else []
+        timeline.append(CreatorArticleTimelineItem(
+            date=row[0],
+            count=row[1],
+            article_ids=article_ids,
+            titles=titles,
+        ))
+        total_articles += row[1]
+
+    return ZhihuCreatorDetailResponse(
+        user_id=creator.user_id,
+        url_token=creator.url_token,
+        user_nickname=creator.user_nickname,
+        user_avatar=creator.user_avatar,
+        user_link=creator.user_link,
+        fans=creator.fans,
+        follows=creator.follows,
+        answer_count=creator.answer_count,
+        article_count=creator.article_count,
+        voteup_count=creator.voteup_count,
+        is_active=creator.is_active,
+        last_crawled_at=creator.last_crawled_at,
+        created_at=creator.created_at,
+        timeline=timeline,
+        total_articles_in_db=total_articles,
+    )
 
 
 # ========== Statistics Endpoints ==========

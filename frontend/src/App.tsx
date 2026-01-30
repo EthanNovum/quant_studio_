@@ -12,7 +12,11 @@ import Sentiment from '@/pages/Sentiment'
 import SentimentAuthors from '@/pages/SentimentAuthors'
 import SentimentSymbols from '@/pages/SentimentSymbols'
 import ArticleDetail from '@/pages/ArticleDetail'
+import Creators from '@/pages/Creators'
+import CreatorDetail from '@/pages/CreatorDetail'
 import Settings from '@/pages/Settings'
+import DailyReview from '@/pages/DailyReview'
+import AISettings from '@/pages/AISettings'
 import LoginPage from '@/pages/LoginPage'
 import { authApi } from '@/services/authApi'
 
@@ -55,6 +59,10 @@ function App() {
           <Route path="/sentiment/authors" element={<SentimentAuthors />} />
           <Route path="/sentiment/symbols" element={<SentimentSymbols />} />
           <Route path="/sentiment/:contentId" element={<ArticleDetail />} />
+          <Route path="/creators" element={<Creators />} />
+          <Route path="/creators/:userId" element={<CreatorDetail />} />
+          <Route path="/daily-review" element={<DailyReview />} />
+          <Route path="/ai-settings" element={<AISettings />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </MainLayout>

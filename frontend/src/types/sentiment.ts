@@ -79,3 +79,15 @@ export interface CrawlTimeRangeRequest {
   end_date?: string | null
   creator_ids?: string[] | null
 }
+
+export interface CreatorArticleTimelineItem {
+  date: string
+  count: number
+  article_ids: string[]
+  titles: string[]
+}
+
+export interface ZhihuCreatorDetail extends ZhihuCreator {
+  timeline: CreatorArticleTimelineItem[]
+  total_articles_in_db: number
+}
