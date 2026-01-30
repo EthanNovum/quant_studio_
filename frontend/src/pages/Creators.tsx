@@ -13,6 +13,7 @@ import {
   UserMinus,
   Loader2,
   Plus,
+  Trash2,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -31,6 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog'
 import { useToastStore } from '@/store'
 import {
@@ -39,6 +41,7 @@ import {
   batchToggleCreators,
   getSyncStatus,
   addCreator,
+  deleteCreator,
 } from '@/services/sentimentApi'
 
 function formatNumber(value: number): string {
@@ -60,6 +63,8 @@ export default function Creators() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [newCreatorLink, setNewCreatorLink] = useState('')
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [creatorToDelete, setCreatorToDelete] = useState<{ userId: string; nickname: string } | null>(null)
 
   const { data: creators, isLoading } = useQuery({
     queryKey: ['creators'],
@@ -109,6 +114,19 @@ export default function Creators() {
     },
   })
 
+  const deleteCreatorMutation = useMutation({
+    mutationFn: deleteCreator,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['creators'] })
+      setDeleteDialogOpen(false)
+      setCreatorToDelete(null)
+      addToast({ title: '创作者已删除' })
+    },
+    onError: () => {
+      addToast({ title: '删除失败', type: 'error' })
+    },
+  })
+
   const sortedCreators = useMemo(() => {
     if (!creators) return []
 
@@ -142,12 +160,6 @@ export default function Creators() {
 
   const followedCount = creators?.filter((c) => c.is_active === 1).length || 0
   const totalCount = creators?.length || 0
-
-  const handleToggle = (userId: string, e: React.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    toggleMutation.mutate(userId)
-  }
 
   const handleCardClick = (userId: string) => {
     navigate(`/creators/${userId}`)
@@ -323,13 +335,24 @@ export default function Creators() {
                   </div>
                 </div>
 
-                {/* Follow switch */}
-                <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                {/* Follow switch and delete button */}
+                <div className="shrink-0 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                   <Switch
                     checked={creator.is_active === 1}
                     onCheckedChange={() => toggleMutation.mutate(creator.user_id)}
                     disabled={toggleMutation.isPending}
                   />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    onClick={() => {
+                      setCreatorToDelete({ userId: creator.user_id, nickname: creator.user_nickname })
+                      setDeleteDialogOpen(true)
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -369,6 +392,35 @@ export default function Creators() {
                 <Plus className="h-4 w-4 mr-1" />
               )}
               添加
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认删除</DialogTitle>
+            <DialogDescription>
+              确定要删除创作者 "{creatorToDelete?.nickname}" 吗？此操作不可撤销。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => creatorToDelete && deleteCreatorMutation.mutate(creatorToDelete.userId)}
+              disabled={deleteCreatorMutation.isPending}
+            >
+              {deleteCreatorMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-1" />
+              )}
+              删除
             </Button>
           </DialogFooter>
         </DialogContent>
