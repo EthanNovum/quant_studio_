@@ -17,7 +17,7 @@ from app.schemas.zhihu import (
     SentimentMarkersResponse,
 )
 
-router = APIRouter(prefix="/sentiment", tags=["sentiment"])
+router = APIRouter(prefix="/sentiment")
 
 
 # ========== Content Endpoints ==========

@@ -17,7 +17,7 @@ from app.database import get_db
 from app.models import CrawlerConfig, ZhihuContent
 from app.schemas.zhihu import CrawlerConfigResponse, CrawlerConfigUpdate, SyncStatus, ArticleTimeRange, CrawlTimeRangeRequest
 
-router = APIRouter(prefix="/sync", tags=["sync"])
+router = APIRouter(prefix="/sync")
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 

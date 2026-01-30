@@ -14,7 +14,7 @@ from app.schemas.zhihu import (
     StockWithAliases,
 )
 
-router = APIRouter(prefix="/aliases", tags=["aliases"])
+router = APIRouter(prefix="/aliases")
 
 
 @router.get("", response_model=List[StockWithAliases])
