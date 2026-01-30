@@ -22,7 +22,9 @@ router = APIRouter(prefix="/sync")
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 
 # Use file-based state to share across Gunicorn workers
-SYNC_STATE_FILE = Path(os.environ.get("DATABASE_PATH", "/app/data/alphanote.db")).parent / "sync_state.json"
+# Default to local path when DATABASE_PATH is not set (local development)
+_default_db_path = PROJECT_ROOT / "backend" / "data" / "alphanote.db"
+SYNC_STATE_FILE = Path(os.environ.get("DATABASE_PATH", str(_default_db_path))).parent / "sync_state.json"
 
 
 def _read_sync_state() -> dict:
