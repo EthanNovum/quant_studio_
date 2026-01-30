@@ -21,7 +21,7 @@ router = APIRouter()
 class TradeCreate(BaseModel):
     """Trade creation schema."""
     code: str
-    action: str  # BUY, SELL, DIVIDEND
+    action: str  # BUY, SELL, DIVIDEND, BONUS
     price: float
     quantity: float
     date: str
@@ -100,8 +100,8 @@ def list_trades(db: Session = Depends(get_db)):
 def create_trade(trade: TradeCreate, db: Session = Depends(get_db)):
     """Create a new trade."""
     # Validate action
-    if trade.action.upper() not in ["BUY", "SELL", "DIVIDEND"]:
-        raise HTTPException(status_code=400, detail="Invalid action. Must be BUY, SELL, or DIVIDEND")
+    if trade.action.upper() not in ["BUY", "SELL", "DIVIDEND", "BONUS"]:
+        raise HTTPException(status_code=400, detail="Invalid action. Must be BUY, SELL, DIVIDEND, or BONUS")
 
     transaction = Transaction(
         symbol=trade.code,

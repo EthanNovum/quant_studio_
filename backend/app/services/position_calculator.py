@@ -28,6 +28,9 @@ def calculate_positions(transactions: list[Transaction]) -> dict[str, Position]:
 
     DIVIDEND reduces cost basis.
 
+    BONUS (红股入账) adds shares at zero cost, diluting avg_cost.
+    new_avg_cost = (old_quantity * old_avg_cost) / (old_quantity + bonus_quantity)
+
     Args:
         transactions: List of transactions sorted by date
 
@@ -70,6 +73,18 @@ def calculate_positions(transactions: list[Transaction]) -> dict[str, Position]:
             # Dividend reduces cost basis (per share)
             if pos.quantity > 0:
                 pos.avg_cost -= tx.price / pos.quantity
+
+        elif tx.action == "BONUS":
+            # Bonus shares (红股入账): free shares that dilute avg_cost
+            # Total cost remains the same, but quantity increases
+            if pos.quantity > 0:
+                total_cost = pos.quantity * pos.avg_cost
+                pos.quantity += tx.quantity
+                pos.avg_cost = total_cost / pos.quantity if pos.quantity > 0 else 0
+            else:
+                # If no existing position, bonus shares have zero cost
+                pos.quantity += tx.quantity
+                pos.avg_cost = 0
 
     # Filter out zero or negative positions
     return {k: v for k, v in positions.items() if v.quantity > 0}

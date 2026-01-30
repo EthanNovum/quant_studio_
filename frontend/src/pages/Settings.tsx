@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, RefreshCw, Play, Square, Search, Calendar, Database, Users, Check, Loader2, Key, Eye, EyeOff, Info } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Plus, RefreshCw, Play, Square, Search, Calendar, Database, Users, Loader2, Key, Eye, EyeOff, Info, CheckCircle, XCircle, ExternalLink } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,9 +12,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useToastStore } from '@/store'
 import {
   getCreators,
-  addCreator,
-  deleteCreator,
-  toggleCreator,
   getAllAliases,
   createAlias,
   updateStockAliases,
@@ -24,18 +22,13 @@ import {
   stopSync,
   getConfig,
   setConfig,
+  testCookies,
 } from '@/services/sentimentApi'
 import { searchStocks } from '@/services/stockApi'
 
 export default function Settings() {
   const { addToast } = useToastStore()
   const queryClient = useQueryClient()
-
-  // ========== Creators Section ==========
-  const [newCreatorUrl, setNewCreatorUrl] = useState('')
-  const [batchAddProgress, setBatchAddProgress] = useState<{ current: number; total: number; failed: string[] } | null>(null)
-  const [showBatchImport, setShowBatchImport] = useState(false)
-  const [batchImportText, setBatchImportText] = useState('')
 
   // ========== Crawl Time Range ==========
   const [crawlStartDate, setCrawlStartDate] = useState('')
@@ -46,6 +39,7 @@ export default function Settings() {
   // ========== Cookies Config ==========
   const [cookiesInput, setCookiesInput] = useState('')
   const [showCookies, setShowCookies] = useState(false)
+  const [cookieTestResult, setCookieTestResult] = useState<{ valid: boolean; message: string } | null>(null)
 
   // Fetch current cookies
   const { data: cookiesConfig } = useQuery({
@@ -59,13 +53,31 @@ export default function Settings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['config-zhihu-cookies'] })
       addToast({ title: 'Cookies 已保存', type: 'success' })
+      setCookieTestResult(null) // Reset test result when cookies change
     },
     onError: () => {
       addToast({ title: '保存失败', type: 'error' })
     },
   })
 
-  const { data: creators, isLoading: creatorsLoading } = useQuery({
+  // Test cookies mutation
+  const testCookiesMutation = useMutation({
+    mutationFn: testCookies,
+    onSuccess: (result) => {
+      setCookieTestResult(result)
+      if (result.valid) {
+        addToast({ title: 'Cookie 有效', description: result.message, type: 'success' })
+      } else {
+        addToast({ title: 'Cookie 无效', description: result.message, type: 'error' })
+      }
+    },
+    onError: () => {
+      setCookieTestResult({ valid: false, message: '测试请求失败' })
+      addToast({ title: '测试失败', type: 'error' })
+    },
+  })
+
+  const { data: creators } = useQuery({
     queryKey: ['creators'],
     queryFn: getCreators,
   })
@@ -74,77 +86,6 @@ export default function Settings() {
   const { data: articleTimeRange } = useQuery({
     queryKey: ['article-time-range'],
     queryFn: getArticleTimeRange,
-  })
-
-  const addCreatorMutation = useMutation({
-    mutationFn: addCreator,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['creators'] })
-      setNewCreatorUrl('')
-      addToast({ title: '创作者已添加', type: 'success' })
-    },
-    onError: (error: any) => {
-      addToast({ title: '添加失败', description: error.response?.data?.detail || '请检查URL格式', type: 'error' })
-    },
-  })
-
-  // Parse URLs from pasted text (supports Python list format, plain URLs, etc.)
-  const parseZhihuUrls = (text: string): string[] => {
-    const urlPattern = /https?:\/\/(?:www\.)?zhihu\.com\/people\/[a-zA-Z0-9_-]+/g
-    const matches = text.match(urlPattern)
-    if (!matches) return []
-    // Remove duplicates
-    return [...new Set(matches)]
-  }
-
-  // Batch add creators
-  const handleBatchAdd = async (urls: string[]) => {
-    if (urls.length === 0) return
-
-    setBatchAddProgress({ current: 0, total: urls.length, failed: [] })
-    const failed: string[] = []
-
-    for (let i = 0; i < urls.length; i++) {
-      try {
-        await addCreator(urls[i])
-      } catch {
-        failed.push(urls[i])
-      }
-      setBatchAddProgress({ current: i + 1, total: urls.length, failed })
-    }
-
-    queryClient.invalidateQueries({ queryKey: ['creators'] })
-    setNewCreatorUrl('')
-
-    if (failed.length === 0) {
-      addToast({ title: `成功添加 ${urls.length} 个创作者`, type: 'success' })
-    } else {
-      addToast({
-        title: `添加完成`,
-        description: `成功 ${urls.length - failed.length} 个，失败 ${failed.length} 个（可能已存在）`,
-        type: failed.length === urls.length ? 'error' : 'success',
-      })
-    }
-
-    setBatchAddProgress(null)
-  }
-
-  const deleteCreatorMutation = useMutation({
-    mutationFn: deleteCreator,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['creators'] })
-      addToast({ title: '创作者已删除', type: 'success' })
-    },
-    onError: (error: any) => {
-      addToast({ title: '删除失败', description: error.response?.data?.detail || '请稍后重试', type: 'error' })
-    },
-  })
-
-  const toggleCreatorMutation = useMutation({
-    mutationFn: toggleCreator,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['creators'] })
-    },
   })
 
   // ========== Aliases Section ==========
@@ -261,6 +202,19 @@ export default function Settings() {
                 ) : (
                   <Badge variant="destructive" className="text-xs">未配置</Badge>
                 )}
+                {cookieTestResult && (
+                  cookieTestResult.valid ? (
+                    <Badge variant="default" className="text-xs bg-green-600">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      有效
+                    </Badge>
+                  ) : (
+                    <Badge variant="destructive" className="text-xs">
+                      <XCircle className="h-3 w-3 mr-1" />
+                      无效
+                    </Badge>
+                  )
+                )}
               </div>
               <p className="text-xs text-muted-foreground mb-2">
                 爬取知乎内容需要登录 Cookies。请在浏览器登录知乎后，从开发者工具中复制 Cookie 值。
@@ -300,8 +254,28 @@ export default function Settings() {
                 </Button>
               </div>
               {cookiesConfig?.value && (
-                <div className="mt-2 text-xs text-muted-foreground">
-                  当前已保存 Cookies（长度: {cookiesConfig.value.length} 字符）
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">
+                    当前已保存 Cookies（长度: {cookiesConfig.value.length} 字符）
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => testCookiesMutation.mutate()}
+                    disabled={testCookiesMutation.isPending}
+                  >
+                    {testCookiesMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                    ) : (
+                      <CheckCircle className="h-4 w-4 mr-1" />
+                    )}
+                    测试 Cookie
+                  </Button>
+                </div>
+              )}
+              {cookieTestResult && (
+                <div className={`mt-2 text-xs p-2 rounded ${cookieTestResult.valid ? 'bg-green-500/10 text-green-600' : 'bg-red-500/10 text-red-600'}`}>
+                  {cookieTestResult.message}
                 </div>
               )}
             </div>
@@ -536,154 +510,26 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        {/* Creators Management */}
+        {/* Creators Management - Link to dedicated page */}
         <Card>
           <CardHeader>
-            <CardTitle>知乎创作者监控</CardTitle>
-            <CardDescription>添加要爬取的知乎用户主页</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              知乎创作者监控
+            </CardTitle>
+            <CardDescription>管理要爬取的知乎用户</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Add creator form */}
-            <div className="flex gap-2">
-              <Input
-                placeholder="https://www.zhihu.com/people/xxx"
-                value={newCreatorUrl}
-                onChange={(e) => setNewCreatorUrl(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newCreatorUrl.trim()) {
-                    addCreatorMutation.mutate(newCreatorUrl)
-                  }
-                }}
-                className="flex-1"
-                disabled={batchAddProgress !== null}
-              />
-              <Button
-                onClick={() => addCreatorMutation.mutate(newCreatorUrl)}
-                disabled={!newCreatorUrl || addCreatorMutation.isPending || batchAddProgress !== null}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setShowBatchImport(!showBatchImport)}
-                disabled={batchAddProgress !== null}
-              >
-                批量导入
-              </Button>
-            </div>
-
-            {/* Batch import section */}
-            {showBatchImport && (
-              <div className="rounded-md border p-3 space-y-2">
-                <div className="text-sm font-medium">批量导入创作者</div>
-                <p className="text-xs text-muted-foreground">
-                  粘贴包含知乎主页链接的文本，支持 Python 列表、JSON、纯文本等格式
-                </p>
-                <textarea
-                  className="w-full h-32 p-2 text-xs font-mono border rounded-md bg-background resize-none"
-                  placeholder={'粘贴文本，例如:\nZHIHU_CREATOR_URL_LIST = [\n    "https://www.zhihu.com/people/xxx",\n    "https://www.zhihu.com/people/yyy",\n]'}
-                  value={batchImportText}
-                  onChange={(e) => setBatchImportText(e.target.value)}
-                  disabled={batchAddProgress !== null}
-                />
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">
-                    {batchImportText ? `检测到 ${parseZhihuUrls(batchImportText).length} 个链接` : ''}
-                  </span>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setShowBatchImport(false)
-                        setBatchImportText('')
-                      }}
-                    >
-                      取消
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        const urls = parseZhihuUrls(batchImportText)
-                        if (urls.length > 0) {
-                          handleBatchAdd(urls)
-                          setBatchImportText('')
-                          setShowBatchImport(false)
-                        }
-                      }}
-                      disabled={parseZhihuUrls(batchImportText).length === 0 || batchAddProgress !== null}
-                    >
-                      开始导入
-                    </Button>
-                  </div>
-                </div>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                当前监控 {creators?.filter(c => c.is_active === 1).length || 0} 位活跃创作者，共 {creators?.length || 0} 位
               </div>
-            )}
-
-            {/* Batch add progress */}
-            {batchAddProgress && (
-              <div className="rounded-md border p-3 bg-muted/50">
-                <div className="flex items-center gap-2 text-sm">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>正在批量添加: {batchAddProgress.current} / {batchAddProgress.total}</span>
-                </div>
-                <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary transition-all"
-                    style={{ width: `${(batchAddProgress.current / batchAddProgress.total) * 100}%` }}
-                  />
-                </div>
-                {batchAddProgress.failed.length > 0 && (
-                  <div className="mt-2 text-xs text-destructive">
-                    失败 {batchAddProgress.failed.length} 个
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Creators list */}
-            <div className="max-h-64 space-y-2 overflow-auto">
-              {creatorsLoading && <div className="text-sm text-muted-foreground">加载中...</div>}
-              {creators?.map((creator) => (
-                <div
-                  key={creator.user_id}
-                  className="flex items-center justify-between rounded-md border p-2"
-                >
-                  <div className="flex items-center gap-2">
-                    {creator.user_avatar && (
-                      <img
-                        src={creator.user_avatar}
-                        alt=""
-                        className="h-8 w-8 rounded-full"
-                      />
-                    )}
-                    <div>
-                      <div className="text-sm font-medium">{creator.user_nickname}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {creator.answer_count} 回答 · {creator.article_count} 文章
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={creator.is_active === 1}
-                      onCheckedChange={() => toggleCreatorMutation.mutate(creator.user_id)}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => deleteCreatorMutation.mutate(creator.user_id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-              {creators?.length === 0 && (
-                <div className="text-center text-sm text-muted-foreground py-4">
-                  暂无监控的创作者
-                </div>
-              )}
+              <Link to="/creators">
+                <Button variant="outline">
+                  管理创作者
+                  <ExternalLink className="h-4 w-4 ml-2" />
+                </Button>
+              </Link>
             </div>
           </CardContent>
         </Card>

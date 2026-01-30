@@ -1,26 +1,56 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
+import { Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import StockSearch from '@/components/stocks/StockSearch'
-import { createTrade, getStockPrice } from '@/services/transactionApi'
+import { createTrade, getStockPrice, getTrades } from '@/services/transactionApi'
 import { useToastStore } from '@/store'
 
-export default function TransactionForm() {
+export interface FillFormData {
+  code: string
+  name: string
+  action: 'BUY' | 'SELL' | 'DIVIDEND' | 'BONUS'
+  price?: number
+}
+
+interface TransactionFormProps {
+  fillData?: FillFormData | null
+  onFillConsumed?: () => void
+}
+
+export default function TransactionForm({ fillData, onFillConsumed }: TransactionFormProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const { addToast } = useToastStore()
 
   const [selectedStock, setSelectedStock] = useState<{ code: string; name: string } | null>(null)
-  const [action, setAction] = useState<'BUY' | 'SELL' | 'DIVIDEND'>('BUY')
+  const [action, setAction] = useState<'BUY' | 'SELL' | 'DIVIDEND' | 'BONUS'>('BUY')
   const [price, setPrice] = useState('')
   const [quantity, setQuantity] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [reason, setReason] = useState('')
+
+  const { data: trades } = useQuery({
+    queryKey: ['trades'],
+    queryFn: getTrades,
+  })
+
+  // Handle fillData from PositionCard
+  useEffect(() => {
+    if (fillData) {
+      setSelectedStock({ code: fillData.code, name: fillData.name })
+      setAction(fillData.action)
+      if (fillData.price) {
+        setPrice(fillData.price.toFixed(3))
+      }
+      onFillConsumed?.()
+    }
+  }, [fillData, onFillConsumed])
 
   // Read URL params on mount
   useEffect(() => {
@@ -76,10 +106,34 @@ export default function TransactionForm() {
     })
   }
 
+  const handleCopyLastTrade = () => {
+    if (!trades?.length) {
+      addToast({ title: '暂无交易记录可复制', variant: 'destructive' })
+      return
+    }
+    const lastTrade = trades[0]
+    setSelectedStock({ code: lastTrade.code, name: lastTrade.name || '' })
+    setAction(lastTrade.action)
+    setPrice(lastTrade.price.toString())
+    setQuantity(lastTrade.quantity.toString())
+    setReason(lastTrade.reason || '')
+    addToast({ title: '已复制上一条交易记录' })
+  }
+
   return (
     <Card>
-      <CardHeader className="pb-3 sm:pb-6">
+      <CardHeader className="pb-3 sm:pb-6 flex flex-row items-center justify-between">
         <CardTitle className="text-base sm:text-lg">新建交易记录</CardTitle>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleCopyLastTrade}
+          disabled={!trades?.length}
+          className="h-8 text-xs"
+        >
+          <Copy className="h-3 w-3 mr-1" />
+          复制上一条
+        </Button>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
@@ -95,7 +149,7 @@ export default function TransactionForm() {
 
             <div className="space-y-2">
               <Label className="text-sm">操作类型</Label>
-              <Select value={action} onValueChange={(v) => setAction(v as 'BUY' | 'SELL' | 'DIVIDEND')}>
+              <Select value={action} onValueChange={(v) => setAction(v as 'BUY' | 'SELL' | 'DIVIDEND' | 'BONUS')}>
                 <SelectTrigger className="h-10 sm:h-9">
                   <SelectValue />
                 </SelectTrigger>
@@ -103,6 +157,7 @@ export default function TransactionForm() {
                   <SelectItem value="BUY">买入</SelectItem>
                   <SelectItem value="SELL">卖出</SelectItem>
                   <SelectItem value="DIVIDEND">分红</SelectItem>
+                  <SelectItem value="BONUS">红股入账</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -4,7 +4,7 @@ export interface Trade {
   id: number
   code: string
   name?: string
-  action: 'BUY' | 'SELL' | 'DIVIDEND'
+  action: 'BUY' | 'SELL' | 'DIVIDEND' | 'BONUS'
   price: number
   quantity: number
   date: string
@@ -15,7 +15,7 @@ export interface Trade {
 
 export interface TradeCreate {
   code: string
-  action: 'BUY' | 'SELL' | 'DIVIDEND'
+  action: 'BUY' | 'SELL' | 'DIVIDEND' | 'BONUS'
   price: number
   quantity: number
   date: string

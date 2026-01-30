@@ -1,14 +1,38 @@
 import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Button } from '@/components/ui/button'
 import { getPositions } from '@/services/transactionApi'
 import { formatNumber, formatPercent, getPriceColorClass } from '@/lib/utils'
+import type { FillFormData } from './TransactionForm'
 
-export default function PositionCard() {
+interface PositionCardProps {
+  onFillForm?: (data: FillFormData) => void
+}
+
+export default function PositionCard({ onFillForm }: PositionCardProps) {
   const { data, isLoading } = useQuery({
     queryKey: ['positions'],
     queryFn: getPositions,
   })
+
+  const handleBuy = (pos: { code: string; name?: string | null; current_price?: number | null }) => {
+    onFillForm?.({
+      code: pos.code,
+      name: pos.name || '',
+      action: 'BUY',
+      price: pos.current_price ?? undefined,
+    })
+  }
+
+  const handleSell = (pos: { code: string; name?: string | null; current_price?: number | null }) => {
+    onFillForm?.({
+      code: pos.code,
+      name: pos.name || '',
+      action: 'SELL',
+      price: pos.current_price ?? undefined,
+    })
+  }
 
   return (
     <Card>
@@ -33,6 +57,7 @@ export default function PositionCard() {
                   <TableHead className="whitespace-nowrap text-xs sm:text-sm text-right">现价</TableHead>
                   <TableHead className="whitespace-nowrap text-xs sm:text-sm text-right hidden sm:table-cell">浮动盈亏</TableHead>
                   <TableHead className="whitespace-nowrap text-xs sm:text-sm text-right">盈亏率</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs sm:text-sm text-center">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -48,6 +73,26 @@ export default function PositionCard() {
                     </TableCell>
                     <TableCell className={`text-right text-xs sm:text-sm ${getPriceColorClass(pos.unrealized_pnl_pct)}`}>
                       {pos.unrealized_pnl_pct !== undefined ? formatPercent(pos.unrealized_pnl_pct) : '-'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1 justify-center">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs text-up hover:text-up"
+                          onClick={() => handleBuy(pos)}
+                        >
+                          买入
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs text-down hover:text-down"
+                          onClick={() => handleSell(pos)}
+                        >
+                          卖出
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -9,7 +9,7 @@ class TransactionBase(BaseModel):
     """Base transaction schema."""
 
     symbol: str
-    action: str  # BUY, SELL, DIVIDEND
+    action: str  # BUY, SELL, DIVIDEND, BONUS
     price: float
     quantity: float
     date: str

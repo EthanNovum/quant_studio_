@@ -25,7 +25,7 @@ def list_transactions(
     symbol: str | None = Query(None, description="Filter by symbol"),
     start_date: str | None = Query(None, description="Start date"),
     end_date: str | None = Query(None, description="End date"),
-    action: str | None = Query(None, description="Filter by action (BUY/SELL/DIVIDEND)"),
+    action: str | None = Query(None, description="Filter by action (BUY/SELL/DIVIDEND/BONUS)"),
     db: Session = Depends(get_db),
 ):
     """List transactions with optional filters."""
@@ -68,8 +68,8 @@ def list_transactions(
 def create_transaction(tx: TransactionCreate, db: Session = Depends(get_db)):
     """Create a new transaction."""
     # Validate action
-    if tx.action.upper() not in ["BUY", "SELL", "DIVIDEND"]:
-        raise HTTPException(status_code=400, detail="Invalid action. Must be BUY, SELL, or DIVIDEND")
+    if tx.action.upper() not in ["BUY", "SELL", "DIVIDEND", "BONUS"]:
+        raise HTTPException(status_code=400, detail="Invalid action. Must be BUY, SELL, DIVIDEND, or BONUS")
 
     transaction = Transaction(
         symbol=tx.symbol,

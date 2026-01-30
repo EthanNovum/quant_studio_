@@ -1,7 +1,7 @@
 export interface Transaction {
   id: number
   symbol: string
-  action: 'BUY' | 'SELL' | 'DIVIDEND'
+  action: 'BUY' | 'SELL' | 'DIVIDEND' | 'BONUS'
   price: number
   quantity: number
   date: string
@@ -13,7 +13,7 @@ export interface Transaction {
 
 export interface TransactionCreate {
   symbol: string
-  action: 'BUY' | 'SELL' | 'DIVIDEND'
+  action: 'BUY' | 'SELL' | 'DIVIDEND' | 'BONUS'
   price: number
   quantity: number
   date: string

@@ -94,6 +94,8 @@ export default function TransactionList() {
         return <span className="text-down">卖出</span>
       case 'DIVIDEND':
         return <span className="text-primary">分红</span>
+      case 'BONUS':
+        return <span className="text-orange-500">红股入账</span>
       default:
         return action
     }

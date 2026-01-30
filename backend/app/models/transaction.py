@@ -15,7 +15,7 @@ class Transaction(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     symbol: Mapped[str] = mapped_column(String(10), ForeignKey("stock_basic.symbol"), nullable=False)
-    action: Mapped[str] = mapped_column(String(10), nullable=False)  # BUY, SELL, DIVIDEND
+    action: Mapped[str] = mapped_column(String(10), nullable=False)  # BUY, SELL, DIVIDEND, BONUS
     price: Mapped[float] = mapped_column(nullable=False)
     quantity: Mapped[float] = mapped_column(nullable=False)
     date: Mapped[str] = mapped_column(String(20), nullable=False)
