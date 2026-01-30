@@ -18,6 +18,7 @@ import CreatorDetail from '@/pages/CreatorDetail'
 import Settings from '@/pages/Settings'
 import DailyReview from '@/pages/DailyReview'
 import AISettings from '@/pages/AISettings'
+import DarePlay from '@/pages/DarePlay'
 import LoginPage from '@/pages/LoginPage'
 import { authApi } from '@/services/authApi'
 
@@ -64,6 +65,7 @@ function App() {
           <Route path="/creators" element={<Creators />} />
           <Route path="/creators/:userId" element={<CreatorDetail />} />
           <Route path="/daily-review" element={<DailyReview />} />
+          <Route path="/dare-play" element={<DarePlay />} />
           <Route path="/ai-settings" element={<AISettings />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>

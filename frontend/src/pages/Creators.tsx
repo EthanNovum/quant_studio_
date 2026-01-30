@@ -12,10 +12,12 @@ import {
   UserPlus,
   UserMinus,
   Loader2,
+  Plus,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -23,12 +25,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
 import { useToastStore } from '@/store'
 import {
   getCreators,
   toggleCreator,
   batchToggleCreators,
   getSyncStatus,
+  addCreator,
 } from '@/services/sentimentApi'
 
 function formatNumber(value: number): string {
@@ -48,6 +58,8 @@ export default function Creators() {
 
   const [sortBy, setSortBy] = useState<SortBy>('fans')
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [newCreatorLink, setNewCreatorLink] = useState('')
 
   const { data: creators, isLoading } = useQuery({
     queryKey: ['creators'],
@@ -80,6 +92,20 @@ export default function Creators() {
     },
     onError: () => {
       addToast({ title: '操作失败', type: 'error' })
+    },
+  })
+
+  const addCreatorMutation = useMutation({
+    mutationFn: addCreator,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['creators'] })
+      setAddDialogOpen(false)
+      setNewCreatorLink('')
+      addToast({ title: '创作者已添加，下次同步时将抓取文章', type: 'success' })
+    },
+    onError: (error: any) => {
+      const message = error?.response?.data?.detail || '添加失败'
+      addToast({ title: message, type: 'error' })
     },
   })
 
@@ -211,6 +237,19 @@ export default function Creators() {
           )}
           全部取消关注
         </Button>
+
+        <div className="h-6 w-px bg-border" />
+
+        {/* Add creator button */}
+        <Button
+          variant="default"
+          size="sm"
+          onClick={() => setAddDialogOpen(true)}
+          className="h-9"
+        >
+          <Plus className="h-4 w-4 mr-1" />
+          添加创作者
+        </Button>
       </div>
 
       {/* Loading state */}
@@ -297,6 +336,43 @@ export default function Creators() {
           ))}
         </div>
       )}
+
+      {/* Add creator dialog */}
+      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>添加创作者</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Input
+                placeholder="输入知乎主页地址，如 https://www.zhihu.com/people/xxx"
+                value={newCreatorLink}
+                onChange={(e) => setNewCreatorLink(e.target.value)}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              添加后将在下次同步时抓取该创作者的文章
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
+              取消
+            </Button>
+            <Button
+              onClick={() => addCreatorMutation.mutate(newCreatorLink)}
+              disabled={!newCreatorLink.trim() || addCreatorMutation.isPending}
+            >
+              {addCreatorMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4 mr-1" />
+              )}
+              添加
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

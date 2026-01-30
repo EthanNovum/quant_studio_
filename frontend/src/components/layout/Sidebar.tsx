@@ -13,6 +13,7 @@ import {
   Brain,
   Zap,
   User,
+  Swords,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/store'
@@ -25,6 +26,7 @@ const navItems = [
   { path: '/trade_review', icon: FileText, label: '交易复盘' },
   { path: '/search', icon: Search, label: '搜索' },
   { path: '/daily-review', icon: Brain, label: 'AI复盘' },
+  { path: '/dare-play', icon: Swords, label: '舆论试炼场' },
   { path: '/creators', icon: User, label: '创作者' },
   { path: '/sentiment', icon: Newspaper, label: '舆情' },
   { path: '/ai-settings', icon: Zap, label: 'AI设置' },
