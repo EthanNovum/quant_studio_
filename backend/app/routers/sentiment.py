@@ -141,8 +141,8 @@ def get_sentiment_markers(symbol: str, db: Session = Depends(get_db)):
         SELECT
             r.display_date,
             COUNT(*) as count,
-            GROUP_CONCAT(c.title, '|||') as titles,
-            GROUP_CONCAT(c.content_id, ',') as article_ids,
+            STRING_AGG(c.title, '|||') as titles,
+            STRING_AGG(c.content_id, ',') as article_ids,
             MAX(CASE WHEN r.display_date != r.original_date THEN 1 ELSE 0 END) as is_weekend
         FROM article_stock_ref r
         JOIN zhihu_content c ON r.article_id = c.content_id
@@ -207,7 +207,11 @@ def add_creator(creator_data: ZhihuCreatorCreate, db: Session = Depends(get_db))
 @router.delete("/creators/{user_id}")
 def delete_creator(user_id: str, db: Session = Depends(get_db)):
     """Remove a creator from monitoring."""
+    # Try to find by user_id first, then by url_token as fallback
     creator = db.query(ZhihuCreator).filter(ZhihuCreator.user_id == user_id).first()
+    if not creator:
+        # Fallback: try to find by url_token (in case user_id was updated by crawler)
+        creator = db.query(ZhihuCreator).filter(ZhihuCreator.url_token == user_id).first()
     if not creator:
         raise HTTPException(status_code=404, detail="Creator not found")
 
@@ -220,7 +224,11 @@ def delete_creator(user_id: str, db: Session = Depends(get_db)):
 @router.patch("/creators/{user_id}/toggle")
 def toggle_creator(user_id: str, db: Session = Depends(get_db)):
     """Toggle creator active status."""
+    # Try to find by user_id first, then by url_token as fallback
     creator = db.query(ZhihuCreator).filter(ZhihuCreator.user_id == user_id).first()
+    if not creator:
+        # Fallback: try to find by url_token (in case user_id was updated by crawler)
+        creator = db.query(ZhihuCreator).filter(ZhihuCreator.url_token == user_id).first()
     if not creator:
         raise HTTPException(status_code=404, detail="Creator not found")
 

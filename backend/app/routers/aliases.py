@@ -22,11 +22,11 @@ def get_all_aliases(db: Session = Depends(get_db)):
     """Get all stocks with their aliases."""
     # Get all stocks that have aliases
     result = db.execute(text("""
-        SELECT s.symbol, s.name, GROUP_CONCAT(a.alias, ',') as aliases
+        SELECT s.symbol, s.name, STRING_AGG(a.alias, ',') as aliases
         FROM stock_basic s
         LEFT JOIN stock_aliases a ON s.symbol = a.symbol
         GROUP BY s.symbol, s.name
-        HAVING aliases IS NOT NULL
+        HAVING STRING_AGG(a.alias, ',') IS NOT NULL
         ORDER BY s.symbol
     """))
 

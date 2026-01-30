@@ -5,6 +5,7 @@ gunicorn>=21.0.0
 
 # Database
 sqlalchemy>=2.0.25
+psycopg2-binary>=2.9.9
 
 # Validation
 pydantic>=2.5.0
@@ -16,3 +17,7 @@ python-multipart>=0.0.6
 # Data scraping
 akshare>=1.12.0
 pandas>=2.0.0
+
+# Crawler dependencies
+httpx>=0.25.0
+parsel>=1.8.0

@@ -1,13 +1,28 @@
 """FastAPI application entry point."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.database import engine, Base
 from app.routers import auth, progress, quotes, screeners, stocks, trades, transactions, watchlist
 from app.routers import aliases, sentiment, sync
 
+# Import all models to ensure they are registered with Base
+from app.models import stock, transaction, watchlist as watchlist_model, screener, quote, zhihu, stock_alias  # noqa: F401
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Create database tables on startup."""
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title=settings.app_name,
     description="DangInvest - Quantitative Investment Research API with Sentiment Analysis",
     version="1.0.0",

@@ -5,7 +5,7 @@
 set -e
 
 DOMAIN="novamodeling.org"
-EMAIL="admin@novamodeling.org"  # Change this to your email
+EMAIL="ethanzhou2015@gmail.com"  # Change this to your email
 
 echo "=== AlphaNote SSL Setup Script ==="
 echo "Domain: $DOMAIN"

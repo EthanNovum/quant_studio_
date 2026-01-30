@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Simplified Zhihu crawler for DangInvest.
-Crawls content from monitored Zhihu creators and saves to SQLite.
+Crawls content from monitored Zhihu creators and saves to database.
 
 Usage:
     python scripts/crawler_zhihu.py [--creators URL1,URL2] [--headless]
@@ -15,7 +15,6 @@ import asyncio
 import json
 import os
 import re
-import sqlite3
 import sys
 import time
 from datetime import datetime
@@ -30,8 +29,9 @@ from parsel import Selector
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# Database path
-DB_PATH = PROJECT_ROOT / "backend" / "data" / "alphanote.db"
+# Database configuration
+DATABASE_URL = os.environ.get("DATABASE_URL", None)
+DB_PATH = Path(os.environ.get("DATABASE_PATH", PROJECT_ROOT / "backend" / "data" / "alphanote.db"))
 
 # Constants
 ZHIHU_URL = "https://www.zhihu.com"
@@ -40,8 +40,18 @@ CRAWL_INTERVAL = 3  # seconds between requests
 
 
 def get_db_connection():
-    """Get SQLite database connection."""
-    return sqlite3.connect(DB_PATH)
+    """Get database connection (PostgreSQL or SQLite)."""
+    if DATABASE_URL and DATABASE_URL.startswith("postgresql"):
+        import psycopg2
+        return psycopg2.connect(DATABASE_URL)
+    else:
+        import sqlite3
+        return sqlite3.connect(DB_PATH)
+
+
+def is_postgres():
+    """Check if using PostgreSQL."""
+    return DATABASE_URL and DATABASE_URL.startswith("postgresql")
 
 
 def extract_text_from_html(html_content: str) -> str:
@@ -303,24 +313,55 @@ class ZhihuCrawler:
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("""
-                INSERT OR REPLACE INTO zhihu_creators
-                (user_id, url_token, user_nickname, user_avatar, user_link, gender,
-                 fans, follows, answer_count, article_count, voteup_count, is_active, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
-            """, (
-                creator["user_id"],
-                creator["url_token"],
-                creator["user_nickname"],
-                creator["user_avatar"],
-                creator["user_link"],
-                creator["gender"],
-                creator["fans"],
-                creator["follows"],
-                creator["answer_count"],
-                creator["article_count"],
-                creator["voteup_count"],
-            ))
+            if is_postgres():
+                cursor.execute("""
+                    INSERT INTO zhihu_creators
+                    (user_id, url_token, user_nickname, user_avatar, user_link, gender,
+                     fans, follows, answer_count, article_count, voteup_count, is_active, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, CURRENT_TIMESTAMP)
+                    ON CONFLICT(user_id) DO UPDATE SET
+                        url_token = EXCLUDED.url_token,
+                        user_nickname = EXCLUDED.user_nickname,
+                        user_avatar = EXCLUDED.user_avatar,
+                        user_link = EXCLUDED.user_link,
+                        gender = EXCLUDED.gender,
+                        fans = EXCLUDED.fans,
+                        follows = EXCLUDED.follows,
+                        answer_count = EXCLUDED.answer_count,
+                        article_count = EXCLUDED.article_count,
+                        voteup_count = EXCLUDED.voteup_count
+                """, (
+                    creator["user_id"],
+                    creator["url_token"],
+                    creator["user_nickname"],
+                    creator["user_avatar"],
+                    creator["user_link"],
+                    creator["gender"],
+                    creator["fans"],
+                    creator["follows"],
+                    creator["answer_count"],
+                    creator["article_count"],
+                    creator["voteup_count"],
+                ))
+            else:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO zhihu_creators
+                    (user_id, url_token, user_nickname, user_avatar, user_link, gender,
+                     fans, follows, answer_count, article_count, voteup_count, is_active, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+                """, (
+                    creator["user_id"],
+                    creator["url_token"],
+                    creator["user_nickname"],
+                    creator["user_avatar"],
+                    creator["user_link"],
+                    creator["gender"],
+                    creator["fans"],
+                    creator["follows"],
+                    creator["answer_count"],
+                    creator["article_count"],
+                    creator["voteup_count"],
+                ))
             conn.commit()
         except Exception as e:
             print(f"[ERROR] Save creator failed: {e}")
@@ -332,26 +373,60 @@ class ZhihuCrawler:
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("""
-                INSERT OR REPLACE INTO zhihu_content
-                (content_id, content_type, title, content_text, content_url,
-                 created_time, updated_time, voteup_count, comment_count,
-                 author_id, author_name, author_avatar, is_tagged, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
-            """, (
-                content["content_id"],
-                content["content_type"],
-                content["title"],
-                content["content_text"],
-                content["content_url"],
-                content["created_time"],
-                content["updated_time"],
-                content["voteup_count"],
-                content["comment_count"],
-                content["author_id"],
-                content["author_name"],
-                content["author_avatar"],
-            ))
+            if is_postgres():
+                cursor.execute("""
+                    INSERT INTO zhihu_content
+                    (content_id, content_type, title, content_text, content_url,
+                     created_time, updated_time, voteup_count, comment_count,
+                     author_id, author_name, author_avatar, is_tagged, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, CURRENT_TIMESTAMP)
+                    ON CONFLICT(content_id) DO UPDATE SET
+                        content_type = EXCLUDED.content_type,
+                        title = EXCLUDED.title,
+                        content_text = EXCLUDED.content_text,
+                        content_url = EXCLUDED.content_url,
+                        created_time = EXCLUDED.created_time,
+                        updated_time = EXCLUDED.updated_time,
+                        voteup_count = EXCLUDED.voteup_count,
+                        comment_count = EXCLUDED.comment_count,
+                        author_id = EXCLUDED.author_id,
+                        author_name = EXCLUDED.author_name,
+                        author_avatar = EXCLUDED.author_avatar
+                """, (
+                    content["content_id"],
+                    content["content_type"],
+                    content["title"],
+                    content["content_text"],
+                    content["content_url"],
+                    content["created_time"],
+                    content["updated_time"],
+                    content["voteup_count"],
+                    content["comment_count"],
+                    content["author_id"],
+                    content["author_name"],
+                    content["author_avatar"],
+                ))
+            else:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO zhihu_content
+                    (content_id, content_type, title, content_text, content_url,
+                     created_time, updated_time, voteup_count, comment_count,
+                     author_id, author_name, author_avatar, is_tagged, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+                """, (
+                    content["content_id"],
+                    content["content_type"],
+                    content["title"],
+                    content["content_text"],
+                    content["content_url"],
+                    content["created_time"],
+                    content["updated_time"],
+                    content["voteup_count"],
+                    content["comment_count"],
+                    content["author_id"],
+                    content["author_name"],
+                    content["author_avatar"],
+                ))
             conn.commit()
         except Exception as e:
             print(f"[ERROR] Save content failed: {e}")
@@ -363,9 +438,14 @@ class ZhihuCrawler:
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("""
-                UPDATE zhihu_creators SET last_crawled_at = CURRENT_TIMESTAMP WHERE user_id = ?
-            """, (user_id,))
+            if is_postgres():
+                cursor.execute("""
+                    UPDATE zhihu_creators SET last_crawled_at = CURRENT_TIMESTAMP WHERE user_id = %s
+                """, (user_id,))
+            else:
+                cursor.execute("""
+                    UPDATE zhihu_creators SET last_crawled_at = CURRENT_TIMESTAMP WHERE user_id = ?
+                """, (user_id,))
             conn.commit()
         except Exception as e:
             print(f"[ERROR] Update crawled time failed: {e}")
@@ -395,7 +475,10 @@ def get_creators_by_ids(user_ids: List[str]) -> List[str]:
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        placeholders = ",".join(["?" for _ in user_ids])
+        if is_postgres():
+            placeholders = ",".join(["%s" for _ in user_ids])
+        else:
+            placeholders = ",".join(["?" for _ in user_ids])
         cursor.execute(f"SELECT user_link FROM zhihu_creators WHERE user_id IN ({placeholders})", user_ids)
         rows = cursor.fetchall()
         return [row[0] for row in rows if row[0]]
@@ -411,7 +494,10 @@ def get_cookies_from_db() -> str:
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT value FROM crawler_config WHERE key = 'zhihu_cookies'")
+        if is_postgres():
+            cursor.execute("SELECT value FROM crawler_config WHERE key = %s", ('zhihu_cookies',))
+        else:
+            cursor.execute("SELECT value FROM crawler_config WHERE key = ?", ('zhihu_cookies',))
         row = cursor.fetchone()
         return row[0] if row else ""
     except Exception as e:
@@ -467,7 +553,7 @@ async def main():
         return
 
     print(f"[INFO] Starting crawler for {len(creator_urls)} creators")
-    print(f"[INFO] Database: {DB_PATH}")
+    print(f"[INFO] Database: {DATABASE_URL if is_postgres() else DB_PATH}")
 
     crawler = ZhihuCrawler(cookies=cookies, headless=args.headless)
     crawler.start_timestamp = start_timestamp

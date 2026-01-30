@@ -1,6 +1,8 @@
 """API routes for data sync operations (crawler, tagging, market data)."""
 
 import asyncio
+import json
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -17,29 +19,55 @@ from app.schemas.zhihu import CrawlerConfigResponse, CrawlerConfigUpdate, SyncSt
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 
-# Global state for tracking sync operations
-_sync_state = {
-    "is_running": False,
-    "current_task": None,
-    "progress": None,
-    "last_sync_at": None,
-    "log_output": "",
-}
-
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+
+# Use file-based state to share across Gunicorn workers
+SYNC_STATE_FILE = Path(os.environ.get("DATABASE_PATH", "/app/data/alphanote.db")).parent / "sync_state.json"
+
+
+def _read_sync_state() -> dict:
+    """Read sync state from file."""
+    default_state = {
+        "is_running": False,
+        "current_task": None,
+        "progress": None,
+        "last_sync_at": None,
+        "log_output": "",
+    }
+    try:
+        if SYNC_STATE_FILE.exists():
+            with open(SYNC_STATE_FILE, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return default_state
+
+
+def _write_sync_state(state: dict):
+    """Write sync state to file."""
+    try:
+        with open(SYNC_STATE_FILE, "w") as f:
+            json.dump(state, f)
+    except Exception as e:
+        print(f"[ERROR] Failed to write sync state: {e}")
+
+
+def _update_sync_state(**kwargs):
+    """Update specific fields in sync state."""
+    state = _read_sync_state()
+    state.update(kwargs)
+    _write_sync_state(state)
 
 
 def run_script(script_name: str, args: list = None):
     """Run a Python script and capture output."""
-    global _sync_state
-
     script_path = PROJECT_ROOT / "scripts" / script_name
     cmd = [sys.executable, str(script_path)]
     if args:
         cmd.extend(args)
 
     try:
-        _sync_state["log_output"] = ""
+        _update_sync_state(log_output="")
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -49,73 +77,89 @@ def run_script(script_name: str, args: list = None):
         )
 
         # Stream output
+        log_buffer = ""
         for line in process.stdout:
-            _sync_state["log_output"] += line
+            log_buffer += line
             print(line, end="")
+            # Update file periodically (every 10 lines or so)
+            if log_buffer.count('\n') >= 5:
+                _update_sync_state(log_output=log_buffer)
+
+        # Final update
+        _update_sync_state(log_output=log_buffer)
 
         process.wait()
         return process.returncode == 0
 
     except Exception as e:
-        _sync_state["log_output"] += f"\n[ERROR] {str(e)}"
+        state = _read_sync_state()
+        _update_sync_state(log_output=state.get("log_output", "") + f"\n[ERROR] {str(e)}")
         return False
 
 
 async def run_sync_task(task_type: str, extra_args: list = None):
     """Background task for running sync operations."""
-    global _sync_state
-
-    _sync_state["is_running"] = True
-    _sync_state["current_task"] = task_type
-    _sync_state["progress"] = 0
+    _update_sync_state(is_running=True, current_task=task_type, progress=0)
 
     try:
         if task_type == "crawl_zhihu":
-            _sync_state["log_output"] = "[INFO] Starting Zhihu crawler...\n"
+            _update_sync_state(log_output="[INFO] Starting Zhihu crawler...\n")
             success = run_script("crawler_zhihu.py", extra_args)
 
         elif task_type == "tag_articles":
-            _sync_state["log_output"] = "[INFO] Starting article tagging...\n"
+            _update_sync_state(log_output="[INFO] Starting article tagging...\n")
             success = run_script("tag_articles.py")
 
         elif task_type == "tag_articles_all":
-            _sync_state["log_output"] = "[INFO] Re-tagging all articles...\n"
+            _update_sync_state(log_output="[INFO] Re-tagging all articles...\n")
             success = run_script("tag_articles.py", ["--all"])
 
         elif task_type == "update_market":
-            _sync_state["log_output"] = "[INFO] Starting market data update...\n"
-            # Use existing scraper if available
+            _update_sync_state(log_output="[INFO] Starting market data update...\n")
             success = run_script("update_market_data.py") if (PROJECT_ROOT / "scripts" / "update_market_data.py").exists() else False
 
         else:
-            _sync_state["log_output"] = f"[ERROR] Unknown task type: {task_type}\n"
+            _update_sync_state(log_output=f"[ERROR] Unknown task type: {task_type}\n")
             success = False
 
-        _sync_state["progress"] = 100
-        _sync_state["last_sync_at"] = datetime.now()
+        state = _read_sync_state()
+        log_output = state.get("log_output", "")
 
         if success:
-            _sync_state["log_output"] += "\n[INFO] Task completed successfully!"
+            log_output += "\n[INFO] Task completed successfully!"
         else:
-            _sync_state["log_output"] += "\n[WARN] Task completed with errors."
+            log_output += "\n[WARN] Task completed with errors."
+
+        _update_sync_state(
+            progress=100,
+            last_sync_at=datetime.now().isoformat(),
+            log_output=log_output
+        )
 
     except Exception as e:
-        _sync_state["log_output"] += f"\n[ERROR] Task failed: {str(e)}"
+        state = _read_sync_state()
+        _update_sync_state(log_output=state.get("log_output", "") + f"\n[ERROR] Task failed: {str(e)}")
 
     finally:
-        _sync_state["is_running"] = False
-        _sync_state["current_task"] = None
+        _update_sync_state(is_running=False, current_task=None)
 
 
 @router.get("/status", response_model=SyncStatus)
 def get_sync_status():
     """Get current sync status."""
+    state = _read_sync_state()
+    last_sync_at = None
+    if state.get("last_sync_at"):
+        try:
+            last_sync_at = datetime.fromisoformat(state["last_sync_at"])
+        except Exception:
+            pass
     return SyncStatus(
-        is_running=_sync_state["is_running"],
-        current_task=_sync_state["current_task"],
-        progress=_sync_state["progress"],
-        last_sync_at=_sync_state["last_sync_at"],
-        log_output=_sync_state["log_output"],
+        is_running=state.get("is_running", False),
+        current_task=state.get("current_task"),
+        progress=state.get("progress"),
+        last_sync_at=last_sync_at,
+        log_output=state.get("log_output", ""),
     )
 
 
@@ -157,7 +201,8 @@ async def start_crawl(
     time_range: Optional[CrawlTimeRangeRequest] = None,
 ):
     """Start Zhihu crawler in background with optional time range filter."""
-    if _sync_state["is_running"]:
+    state = _read_sync_state()
+    if state.get("is_running"):
         raise HTTPException(status_code=400, detail="A sync task is already running")
 
     # Build arguments for crawler script
@@ -180,7 +225,8 @@ async def start_tagging(
     retag_all: bool = False,
 ):
     """Start article tagging in background."""
-    if _sync_state["is_running"]:
+    state = _read_sync_state()
+    if state.get("is_running"):
         raise HTTPException(status_code=400, detail="A sync task is already running")
 
     task_type = "tag_articles_all" if retag_all else "tag_articles"
@@ -191,7 +237,8 @@ async def start_tagging(
 @router.post("/market")
 async def start_market_update(background_tasks: BackgroundTasks):
     """Start market data update in background."""
-    if _sync_state["is_running"]:
+    state = _read_sync_state()
+    if state.get("is_running"):
         raise HTTPException(status_code=400, detail="A sync task is already running")
 
     background_tasks.add_task(run_sync_task, "update_market")
@@ -201,11 +248,9 @@ async def start_market_update(background_tasks: BackgroundTasks):
 @router.post("/stop")
 def stop_sync():
     """Stop current sync task (best effort)."""
-    global _sync_state
-    # Note: This doesn't actually kill the subprocess, just resets state
-    _sync_state["is_running"] = False
-    _sync_state["current_task"] = None
-    _sync_state["log_output"] += "\n[WARN] Stop requested by user"
+    state = _read_sync_state()
+    log_output = state.get("log_output", "") + "\n[WARN] Stop requested by user"
+    _update_sync_state(is_running=False, current_task=None, log_output=log_output)
     return {"message": "Stop requested"}
 
 

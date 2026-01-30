@@ -17,7 +17,6 @@ import argparse
 import json
 import logging
 import os
-import sqlite3
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -28,9 +27,12 @@ import pandas as pd
 # Paths - use environment variables or defaults
 BASE_DIR = Path(__file__).parent
 DATA_DIR = Path(os.environ.get("DATA_DIR", BASE_DIR / "data"))
-DB_PATH = Path(os.environ.get("DATABASE_PATH", DATA_DIR / "alphanote.db"))
 PROGRESS_PATH = Path(os.environ.get("PROGRESS_PATH", DATA_DIR / "progress.json"))
 LOG_PATH = Path(os.environ.get("LOG_PATH", DATA_DIR / "update.log"))
+
+# Database configuration
+DATABASE_URL = os.environ.get("DATABASE_URL", None)
+DB_PATH = Path(os.environ.get("DATABASE_PATH", DATA_DIR / "alphanote.db"))
 
 # Ensure directories exist
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -45,6 +47,21 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger(__name__)
+
+
+def get_db_connection():
+    """Get database connection (PostgreSQL or SQLite)."""
+    if DATABASE_URL and DATABASE_URL.startswith("postgresql"):
+        import psycopg2
+        return psycopg2.connect(DATABASE_URL)
+    else:
+        import sqlite3
+        return sqlite3.connect(DB_PATH)
+
+
+def is_postgres():
+    """Check if using PostgreSQL."""
+    return DATABASE_URL and DATABASE_URL.startswith("postgresql")
 
 
 def write_progress(is_running: bool, mode: str = "", current: int = 0, total: int = 0, current_symbol: str = ""):
@@ -144,10 +161,11 @@ def fetch_stock_indicators(symbol: str) -> pd.DataFrame:
     return pd.DataFrame()
 
 
-def update_stock_basic(conn: sqlite3.Connection, assets: pd.DataFrame):
+def update_stock_basic(conn, assets: pd.DataFrame):
     """Update stock_basic table with basic info."""
     cursor = conn.cursor()
     total = len(assets)
+    placeholder = "%s" if is_postgres() else "?"
 
     for i, row in assets.iterrows():
         symbol = row["code"]
@@ -177,34 +195,64 @@ def update_stock_basic(conn: sqlite3.Connection, assets: pd.DataFrame):
                 except Exception:
                     pass
 
-                cursor.execute(
-                    """
-                    INSERT INTO stock_basic (symbol, name, asset_type, industry, roe, controller, listing_date, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    ON CONFLICT(symbol) DO UPDATE SET
-                        name = excluded.name,
-                        asset_type = excluded.asset_type,
-                        industry = excluded.industry,
-                        roe = COALESCE(excluded.roe, roe),
-                        controller = excluded.controller,
-                        listing_date = excluded.listing_date,
-                        updated_at = CURRENT_TIMESTAMP
-                """,
-                    (symbol, name, asset_type, industry, roe, controller, listing_date),
-                )
+                if is_postgres():
+                    cursor.execute(
+                        f"""
+                        INSERT INTO stock_basic (symbol, name, asset_type, industry, roe, controller, listing_date, updated_at)
+                        VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, CURRENT_TIMESTAMP)
+                        ON CONFLICT(symbol) DO UPDATE SET
+                            name = EXCLUDED.name,
+                            asset_type = EXCLUDED.asset_type,
+                            industry = EXCLUDED.industry,
+                            roe = COALESCE(EXCLUDED.roe, stock_basic.roe),
+                            controller = EXCLUDED.controller,
+                            listing_date = EXCLUDED.listing_date,
+                            updated_at = CURRENT_TIMESTAMP
+                    """,
+                        (symbol, name, asset_type, industry, roe, controller, listing_date),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO stock_basic (symbol, name, asset_type, industry, roe, controller, listing_date, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        ON CONFLICT(symbol) DO UPDATE SET
+                            name = excluded.name,
+                            asset_type = excluded.asset_type,
+                            industry = excluded.industry,
+                            roe = COALESCE(excluded.roe, roe),
+                            controller = excluded.controller,
+                            listing_date = excluded.listing_date,
+                            updated_at = CURRENT_TIMESTAMP
+                    """,
+                        (symbol, name, asset_type, industry, roe, controller, listing_date),
+                    )
             else:
                 # For ETF/LOF, just store basic info
-                cursor.execute(
-                    """
-                    INSERT INTO stock_basic (symbol, name, asset_type, updated_at)
-                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                    ON CONFLICT(symbol) DO UPDATE SET
-                        name = excluded.name,
-                        asset_type = excluded.asset_type,
-                        updated_at = CURRENT_TIMESTAMP
-                """,
-                    (symbol, name, asset_type),
-                )
+                if is_postgres():
+                    cursor.execute(
+                        f"""
+                        INSERT INTO stock_basic (symbol, name, asset_type, updated_at)
+                        VALUES ({placeholder}, {placeholder}, {placeholder}, CURRENT_TIMESTAMP)
+                        ON CONFLICT(symbol) DO UPDATE SET
+                            name = EXCLUDED.name,
+                            asset_type = EXCLUDED.asset_type,
+                            updated_at = CURRENT_TIMESTAMP
+                    """,
+                        (symbol, name, asset_type),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO stock_basic (symbol, name, asset_type, updated_at)
+                        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                        ON CONFLICT(symbol) DO UPDATE SET
+                            name = excluded.name,
+                            asset_type = excluded.asset_type,
+                            updated_at = CURRENT_TIMESTAMP
+                    """,
+                        (symbol, name, asset_type),
+                    )
 
             if (i + 1) % 50 == 0:
                 conn.commit()
@@ -213,13 +261,23 @@ def update_stock_basic(conn: sqlite3.Connection, assets: pd.DataFrame):
         except Exception as e:
             logger.warning(f"Failed to update {symbol}: {e}")
             # Still insert basic info
-            cursor.execute(
-                """
-                INSERT OR IGNORE INTO stock_basic (symbol, name, asset_type)
-                VALUES (?, ?, ?)
-            """,
-                (symbol, name, asset_type),
-            )
+            if is_postgres():
+                cursor.execute(
+                    f"""
+                    INSERT INTO stock_basic (symbol, name, asset_type)
+                    VALUES ({placeholder}, {placeholder}, {placeholder})
+                    ON CONFLICT(symbol) DO NOTHING
+                """,
+                    (symbol, name, asset_type),
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT OR IGNORE INTO stock_basic (symbol, name, asset_type)
+                    VALUES (?, ?, ?)
+                """,
+                    (symbol, name, asset_type),
+                )
 
     conn.commit()
 
@@ -278,25 +336,27 @@ def fetch_stock_hist_with_retry(symbol: str, start_date: str, max_retries: int =
     return pd.DataFrame()
 
 
-def get_latest_quote_date(cursor: sqlite3.Cursor, symbol: str) -> str | None:
+def get_latest_quote_date(cursor, symbol: str) -> str | None:
     """Get the latest quote date for a symbol from the database."""
+    placeholder = "%s" if is_postgres() else "?"
     cursor.execute(
-        "SELECT MAX(date) FROM daily_quotes WHERE symbol = ?",
+        f"SELECT MAX(date) FROM daily_quotes WHERE symbol = {placeholder}",
         (symbol,)
     )
     result = cursor.fetchone()
     if result and result[0]:
-        return result[0]
+        return str(result[0])
     return None
 
 
-def update_daily_quotes(conn: sqlite3.Connection, symbols: list[str] | None = None, start_date: str = None, fetch_all: bool = False, limit: int = None, force_full: bool = False):
+def update_daily_quotes(conn, symbols: list[str] | None = None, start_date: str = None, fetch_all: bool = False, limit: int = None, force_full: bool = False):
     """Update daily_quotes table with latest price data.
 
     By default, uses incremental update (only fetches data after the latest date in DB).
     Use force_full=True to force a full update from start_date.
     """
     cursor = conn.cursor()
+    placeholder = "%s" if is_postgres() else "?"
 
     # Default start_date (used for new symbols with no existing data)
     default_start_date = start_date
@@ -308,7 +368,7 @@ def update_daily_quotes(conn: sqlite3.Connection, symbols: list[str] | None = No
         if fetch_all:
             # Fetch all assets from stock_basic
             if limit:
-                cursor.execute("SELECT symbol, asset_type FROM stock_basic LIMIT ?", (limit,))
+                cursor.execute(f"SELECT symbol, asset_type FROM stock_basic LIMIT {placeholder}", (limit,))
             else:
                 cursor.execute("SELECT symbol, asset_type FROM stock_basic")
             symbol_types = {row[0]: row[1] for row in cursor.fetchall()}
@@ -326,11 +386,14 @@ def update_daily_quotes(conn: sqlite3.Connection, symbols: list[str] | None = No
             else:
                 # Fallback to stocks in stock_basic with limit
                 fallback_limit = limit if limit else 100
-                cursor.execute("SELECT symbol, asset_type FROM stock_basic LIMIT ?", (fallback_limit,))
+                cursor.execute(f"SELECT symbol, asset_type FROM stock_basic LIMIT {placeholder}", (fallback_limit,))
                 symbol_types = {row[0]: row[1] for row in cursor.fetchall()}
     else:
         # Get asset types for provided symbols
-        placeholders = ",".join("?" * len(symbols))
+        if is_postgres():
+            placeholders = ",".join(["%s"] * len(symbols))
+        else:
+            placeholders = ",".join(["?"] * len(symbols))
         cursor.execute(f"SELECT symbol, COALESCE(asset_type, 'stock') FROM stock_basic WHERE symbol IN ({placeholders})", symbols)
         symbol_types = {row[0]: row[1] for row in cursor.fetchall()}
         # For symbols not in DB, guess type
@@ -407,37 +470,70 @@ def update_daily_quotes(conn: sqlite3.Connection, symbols: list[str] | None = No
 
             # Insert data
             for _, row in df.iterrows():
-                cursor.execute(
-                    """
-                    INSERT INTO daily_quotes (symbol, date, open, high, low, close, volume, turnover, turnover_rate, pe_ttm, pb, market_cap)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(symbol, date) DO UPDATE SET
-                        open = excluded.open,
-                        high = excluded.high,
-                        low = excluded.low,
-                        close = excluded.close,
-                        volume = excluded.volume,
-                        turnover = excluded.turnover,
-                        turnover_rate = excluded.turnover_rate,
-                        pe_ttm = COALESCE(excluded.pe_ttm, pe_ttm),
-                        pb = COALESCE(excluded.pb, pb),
-                        market_cap = COALESCE(excluded.market_cap, market_cap)
-                """,
-                    (
-                        symbol,
-                        row["date"],
-                        row["open"],
-                        row["high"],
-                        row["low"],
-                        row["close"],
-                        row.get("volume"),
-                        row.get("turnover"),
-                        row.get("turnover_rate"),
-                        row.get("pe_ttm"),
-                        row.get("pb"),
-                        row.get("market_cap"),
-                    ),
-                )
+                if is_postgres():
+                    cursor.execute(
+                        """
+                        INSERT INTO daily_quotes (symbol, date, open, high, low, close, volume, turnover, turnover_rate, pe_ttm, pb, market_cap)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT(symbol, date) DO UPDATE SET
+                            open = EXCLUDED.open,
+                            high = EXCLUDED.high,
+                            low = EXCLUDED.low,
+                            close = EXCLUDED.close,
+                            volume = EXCLUDED.volume,
+                            turnover = EXCLUDED.turnover,
+                            turnover_rate = EXCLUDED.turnover_rate,
+                            pe_ttm = COALESCE(EXCLUDED.pe_ttm, daily_quotes.pe_ttm),
+                            pb = COALESCE(EXCLUDED.pb, daily_quotes.pb),
+                            market_cap = COALESCE(EXCLUDED.market_cap, daily_quotes.market_cap)
+                    """,
+                        (
+                            symbol,
+                            row["date"],
+                            row["open"],
+                            row["high"],
+                            row["low"],
+                            row["close"],
+                            row.get("volume"),
+                            row.get("turnover"),
+                            row.get("turnover_rate"),
+                            row.get("pe_ttm"),
+                            row.get("pb"),
+                            row.get("market_cap"),
+                        ),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO daily_quotes (symbol, date, open, high, low, close, volume, turnover, turnover_rate, pe_ttm, pb, market_cap)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(symbol, date) DO UPDATE SET
+                            open = excluded.open,
+                            high = excluded.high,
+                            low = excluded.low,
+                            close = excluded.close,
+                            volume = excluded.volume,
+                            turnover = excluded.turnover,
+                            turnover_rate = excluded.turnover_rate,
+                            pe_ttm = COALESCE(excluded.pe_ttm, pe_ttm),
+                            pb = COALESCE(excluded.pb, pb),
+                            market_cap = COALESCE(excluded.market_cap, market_cap)
+                    """,
+                        (
+                            symbol,
+                            row["date"],
+                            row["open"],
+                            row["high"],
+                            row["low"],
+                            row["close"],
+                            row.get("volume"),
+                            row.get("turnover"),
+                            row.get("turnover_rate"),
+                            row.get("pe_ttm"),
+                            row.get("pb"),
+                            row.get("market_cap"),
+                        ),
+                    )
 
             if (i + 1) % 10 == 0:
                 conn.commit()
@@ -471,7 +567,7 @@ def run_daily_update(start_date: str = None, skip_trading_check: bool = False, f
 
     write_progress(True, "daily", 0, 0)
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     try:
         update_daily_quotes(conn, start_date=start_date, fetch_all=fetch_all, limit=limit, force_full=force_full)
         logger.info("Daily update completed successfully")
@@ -490,7 +586,7 @@ def run_monthly_update(limit: int = None, asset_types: list[str] = None):
     logger.info(f"Starting monthly update for: {asset_types}")
     write_progress(True, "monthly", 0, 0)
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     try:
         all_assets = pd.DataFrame()
 
@@ -601,7 +697,7 @@ Examples:
     )
     args = parser.parse_args()
 
-    if not DB_PATH.exists():
+    if not DB_PATH.exists() and not is_postgres():
         logger.error(f"Database not found at {DB_PATH}. Run init_db.py first.")
         return
 

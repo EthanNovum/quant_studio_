@@ -15,8 +15,8 @@ This script:
 """
 
 import argparse
+import os
 import re
-import sqlite3
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -26,7 +26,8 @@ from typing import Dict, List, Optional, Set, Tuple
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# Database path
+# Database configuration
+DATABASE_URL = os.environ.get("DATABASE_URL", None)
 DB_PATH = PROJECT_ROOT / "backend" / "data" / "alphanote.db"
 
 # Matching weights
@@ -36,8 +37,18 @@ MIN_SCORE_THRESHOLD = 2  # Minimum score to create a reference
 
 
 def get_db_connection():
-    """Get SQLite database connection."""
-    return sqlite3.connect(DB_PATH)
+    """Get database connection (PostgreSQL or SQLite)."""
+    if DATABASE_URL and DATABASE_URL.startswith("postgresql"):
+        import psycopg2
+        return psycopg2.connect(DATABASE_URL)
+    else:
+        import sqlite3
+        return sqlite3.connect(DB_PATH)
+
+
+def is_postgres():
+    """Check if using PostgreSQL."""
+    return DATABASE_URL and DATABASE_URL.startswith("postgresql")
 
 
 def load_stock_keywords() -> Dict[str, List[str]]:
@@ -176,10 +187,11 @@ def get_untagged_articles(tag_all: bool = False) -> List[Dict]:
                 FROM zhihu_content
             """)
         else:
+            # Use integer comparison for SQLite compatibility
             cursor.execute("""
                 SELECT content_id, title, content_text, created_time
                 FROM zhihu_content
-                WHERE is_tagged = 0
+                WHERE is_tagged = 0 OR is_tagged IS NULL
             """)
 
         articles = []
@@ -213,26 +225,48 @@ def save_article_stock_ref(
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        # Check if reference already exists
-        cursor.execute("""
-            SELECT id FROM article_stock_ref
-            WHERE article_id = ? AND stock_symbol = ?
-        """, (article_id, stock_symbol))
+        if is_postgres():
+            # Check if reference already exists
+            cursor.execute("""
+                SELECT id FROM article_stock_ref
+                WHERE article_id = %s AND stock_symbol = %s
+            """, (article_id, stock_symbol))
 
-        if cursor.fetchone():
-            # Update existing
-            cursor.execute("""
-                UPDATE article_stock_ref
-                SET display_date = ?, original_date = ?, match_keyword = ?, match_score = ?
-                WHERE article_id = ? AND stock_symbol = ?
-            """, (display_date, original_date, match_keyword, match_score, article_id, stock_symbol))
+            if cursor.fetchone():
+                # Update existing
+                cursor.execute("""
+                    UPDATE article_stock_ref
+                    SET display_date = %s, original_date = %s, match_keyword = %s, match_score = %s
+                    WHERE article_id = %s AND stock_symbol = %s
+                """, (display_date, original_date, match_keyword, match_score, article_id, stock_symbol))
+            else:
+                # Insert new
+                cursor.execute("""
+                    INSERT INTO article_stock_ref
+                    (article_id, stock_symbol, display_date, original_date, match_keyword, match_score, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                """, (article_id, stock_symbol, display_date, original_date, match_keyword, match_score))
         else:
-            # Insert new
+            # Check if reference already exists
             cursor.execute("""
-                INSERT INTO article_stock_ref
-                (article_id, stock_symbol, display_date, original_date, match_keyword, match_score, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (article_id, stock_symbol, display_date, original_date, match_keyword, match_score))
+                SELECT id FROM article_stock_ref
+                WHERE article_id = ? AND stock_symbol = ?
+            """, (article_id, stock_symbol))
+
+            if cursor.fetchone():
+                # Update existing
+                cursor.execute("""
+                    UPDATE article_stock_ref
+                    SET display_date = ?, original_date = ?, match_keyword = ?, match_score = ?
+                    WHERE article_id = ? AND stock_symbol = ?
+                """, (display_date, original_date, match_keyword, match_score, article_id, stock_symbol))
+            else:
+                # Insert new
+                cursor.execute("""
+                    INSERT INTO article_stock_ref
+                    (article_id, stock_symbol, display_date, original_date, match_keyword, match_score, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (article_id, stock_symbol, display_date, original_date, match_keyword, match_score))
 
         conn.commit()
     except Exception as e:
@@ -246,9 +280,14 @@ def mark_article_tagged(article_id: str):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("""
-            UPDATE zhihu_content SET is_tagged = 1 WHERE content_id = ?
-        """, (article_id,))
+        if is_postgres():
+            cursor.execute("""
+                UPDATE zhihu_content SET is_tagged = 1 WHERE content_id = %s
+            """, (article_id,))
+        else:
+            cursor.execute("""
+                UPDATE zhihu_content SET is_tagged = 1 WHERE content_id = ?
+            """, (article_id,))
         conn.commit()
     except Exception as e:
         print(f"[ERROR] Mark tagged failed: {e}")
@@ -274,7 +313,7 @@ def clear_existing_refs():
 def tag_articles(tag_all: bool = False):
     """Main tagging function."""
     print(f"\n[INFO] Starting article tagging...")
-    print(f"[INFO] Database: {DB_PATH}")
+    print(f"[INFO] Database: {DATABASE_URL if is_postgres() else DB_PATH}")
 
     # Load keywords
     keywords = load_stock_keywords()
