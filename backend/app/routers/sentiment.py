@@ -7,7 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import ZhihuContent, ZhihuCreator, ArticleStockRef
+from app.models import ZhihuContent, ZhihuCreator, ArticleStockRef, ArticleFavorite
 from app.schemas.zhihu import (
     ZhihuContentResponse,
     ZhihuContentListResponse,
@@ -421,3 +421,91 @@ def update_article_stocks(content_id: str, stock_symbols: List[str], db: Session
     db.commit()
 
     return {"message": "Stock associations updated", "stocks": stock_symbols}
+
+
+# ========== Favorites Endpoints ==========
+
+@router.get("/favorites", response_model=ZhihuContentListResponse)
+def get_favorites(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    """Get paginated list of favorite articles."""
+    # Get favorite article IDs
+    favorites_query = db.query(ArticleFavorite).order_by(ArticleFavorite.created_at.desc())
+    total = favorites_query.count()
+
+    favorites = favorites_query.offset((page - 1) * page_size).limit(page_size).all()
+    favorite_ids = [f.article_id for f in favorites]
+
+    if not favorite_ids:
+        return ZhihuContentListResponse(items=[], total=0, page=page, page_size=page_size)
+
+    # Get articles in the same order as favorites
+    articles = db.query(ZhihuContent).filter(ZhihuContent.content_id.in_(favorite_ids)).all()
+    article_map = {a.content_id: a for a in articles}
+
+    items = []
+    for fav_id in favorite_ids:
+        article = article_map.get(fav_id)
+        if article:
+            refs = db.query(ArticleStockRef).filter(ArticleStockRef.article_id == article.content_id).all()
+            related_stocks = [ref.stock_symbol for ref in refs]
+            items.append(ZhihuContentResponse(
+                content_id=article.content_id,
+                content_type=article.content_type,
+                title=article.title,
+                content_text=article.content_text[:500] if article.content_text else None,
+                content_url=article.content_url,
+                created_time=article.created_time,
+                voteup_count=article.voteup_count,
+                comment_count=article.comment_count,
+                author_id=article.author_id,
+                author_name=article.author_name,
+                author_avatar=article.author_avatar,
+                is_tagged=article.is_tagged,
+                related_stocks=related_stocks,
+            ))
+
+    return ZhihuContentListResponse(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.get("/favorites/{content_id}")
+def check_favorite(content_id: str, db: Session = Depends(get_db)):
+    """Check if an article is favorited."""
+    favorite = db.query(ArticleFavorite).filter(ArticleFavorite.article_id == content_id).first()
+    return {"is_favorited": favorite is not None}
+
+
+@router.post("/favorites/{content_id}")
+def add_favorite(content_id: str, db: Session = Depends(get_db)):
+    """Add an article to favorites."""
+    # Check if article exists
+    article = db.query(ZhihuContent).filter(ZhihuContent.content_id == content_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    # Check if already favorited
+    existing = db.query(ArticleFavorite).filter(ArticleFavorite.article_id == content_id).first()
+    if existing:
+        return {"message": "Already favorited", "is_favorited": True}
+
+    favorite = ArticleFavorite(article_id=content_id)
+    db.add(favorite)
+    db.commit()
+
+    return {"message": "Added to favorites", "is_favorited": True}
+
+
+@router.delete("/favorites/{content_id}")
+def remove_favorite(content_id: str, db: Session = Depends(get_db)):
+    """Remove an article from favorites."""
+    favorite = db.query(ArticleFavorite).filter(ArticleFavorite.article_id == content_id).first()
+    if not favorite:
+        return {"message": "Not in favorites", "is_favorited": False}
+
+    db.delete(favorite)
+    db.commit()
+
+    return {"message": "Removed from favorites", "is_favorited": False}

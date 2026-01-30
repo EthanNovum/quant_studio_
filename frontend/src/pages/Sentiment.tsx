@@ -13,6 +13,7 @@ import {
   Filter,
   Users,
   TrendingUp,
+  Heart,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -153,6 +154,12 @@ export default function Sentiment() {
         {/* Quick links and view mode toggle */}
         <div className="flex items-center gap-2 flex-wrap">
           {/* Quick links to authors and symbols pages */}
+          <Link to="/sentiment/favorites">
+            <Button variant="outline" size="sm" className="gap-1 h-8 sm:h-9 text-xs sm:text-sm">
+              <Heart className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              收藏
+            </Button>
+          </Link>
           <Link to="/creators">
             <Button variant="outline" size="sm" className="gap-1 h-8 sm:h-9 text-xs sm:text-sm">
               <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4" />

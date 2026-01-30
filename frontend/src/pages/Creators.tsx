@@ -14,7 +14,6 @@ import {
   Loader2,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -261,20 +260,11 @@ export default function Creators() {
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  {/* Name with follow badge */}
+                  {/* Name */}
                   <div className="flex items-center gap-2 mb-1">
                     <h3 className="font-medium truncate">
                       {creator.user_nickname}
                     </h3>
-                    {creator.is_active === 1 ? (
-                      <Badge variant="default" className="text-xs px-1.5 py-0">
-                        已关注
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="text-xs px-1.5 py-0">
-                        未关注
-                      </Badge>
-                    )}
                   </div>
 
                   {/* Stats row */}

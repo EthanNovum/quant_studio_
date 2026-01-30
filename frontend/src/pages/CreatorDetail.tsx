@@ -45,6 +45,7 @@ export default function CreatorDetail() {
 
   const [page, setPage] = useState(1)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [selectedArticleIds, setSelectedArticleIds] = useState<string[]>([])
   const pageSize = 20
 
   const { data: creator, isLoading: creatorLoading } = useQuery({
@@ -63,7 +64,21 @@ export default function CreatorDetail() {
         sort_by: 'time',
         sort_order: 'desc',
       }),
-    enabled: !!userId,
+    enabled: !!userId && !selectedDate,
+  })
+
+  // Fetch all articles when a date is selected to ensure we have the filtered ones
+  const { data: allArticlesData, isLoading: allArticlesLoading } = useQuery({
+    queryKey: ['creator-articles-all', userId],
+    queryFn: () =>
+      getArticles({
+        author_id: userId,
+        page: 1,
+        page_size: 1000,
+        sort_by: 'time',
+        sort_order: 'desc',
+      }),
+    enabled: !!userId && !!selectedDate,
   })
 
   const toggleMutation = useMutation({
@@ -80,19 +95,19 @@ export default function CreatorDetail() {
 
   const handleDateClick = (date: string, articleIds: string[]) => {
     setSelectedDate(date)
+    setSelectedArticleIds(articleIds)
     // Scroll to articles section
     document.getElementById('articles-section')?.scrollIntoView({ behavior: 'smooth' })
   }
 
   // Filter articles by selected date if any
   const filteredArticles = selectedDate
-    ? articlesData?.items.filter((article) => {
-        const articleDate = new Date(article.created_time * 1000)
-          .toISOString()
-          .split('T')[0]
-        return articleDate === selectedDate
-      })
+    ? allArticlesData?.items.filter((article) =>
+        selectedArticleIds.includes(article.content_id)
+      )
     : articlesData?.items
+
+  const isLoadingArticles = selectedDate ? allArticlesLoading : articlesLoading
 
   if (creatorLoading) {
     return (
@@ -261,7 +276,7 @@ export default function CreatorDetail() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {articlesLoading ? (
+          {isLoadingArticles ? (
             <div className="flex h-32 items-center justify-center">
               <div className="text-muted-foreground">加载中...</div>
             </div>

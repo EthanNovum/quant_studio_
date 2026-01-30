@@ -11,6 +11,7 @@ import StockDetail from '@/pages/StockDetail'
 import Sentiment from '@/pages/Sentiment'
 import SentimentAuthors from '@/pages/SentimentAuthors'
 import SentimentSymbols from '@/pages/SentimentSymbols'
+import SentimentFavorites from '@/pages/SentimentFavorites'
 import ArticleDetail from '@/pages/ArticleDetail'
 import Creators from '@/pages/Creators'
 import CreatorDetail from '@/pages/CreatorDetail'
@@ -58,6 +59,7 @@ function App() {
           <Route path="/sentiment" element={<Sentiment />} />
           <Route path="/sentiment/authors" element={<SentimentAuthors />} />
           <Route path="/sentiment/symbols" element={<SentimentSymbols />} />
+          <Route path="/sentiment/favorites" element={<SentimentFavorites />} />
           <Route path="/sentiment/:contentId" element={<ArticleDetail />} />
           <Route path="/creators" element={<Creators />} />
           <Route path="/creators/:userId" element={<CreatorDetail />} />

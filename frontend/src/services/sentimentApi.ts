@@ -34,6 +34,31 @@ export async function updateArticleStocks(contentId: string, symbols: string[]):
   await api.put(`/sentiment/articles/${contentId}/stocks`, symbols)
 }
 
+// ========== Favorites API ==========
+
+export async function getFavorites(params: {
+  page?: number
+  page_size?: number
+}): Promise<ZhihuContentListResponse> {
+  const { data } = await api.get<ZhihuContentListResponse>('/sentiment/favorites', { params })
+  return data
+}
+
+export async function checkFavorite(contentId: string): Promise<{ is_favorited: boolean }> {
+  const { data } = await api.get<{ is_favorited: boolean }>(`/sentiment/favorites/${contentId}`)
+  return data
+}
+
+export async function addFavorite(contentId: string): Promise<{ is_favorited: boolean }> {
+  const { data } = await api.post<{ is_favorited: boolean }>(`/sentiment/favorites/${contentId}`)
+  return data
+}
+
+export async function removeFavorite(contentId: string): Promise<{ is_favorited: boolean }> {
+  const { data } = await api.delete<{ is_favorited: boolean }>(`/sentiment/favorites/${contentId}`)
+  return data
+}
+
 export async function getSentimentMarkers(symbol: string): Promise<SentimentMarkersResponse> {
   const { data } = await api.get<SentimentMarkersResponse>(`/sentiment/markers/${symbol}`)
   return data

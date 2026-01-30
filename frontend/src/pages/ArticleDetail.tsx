@@ -12,6 +12,7 @@ import {
   X,
   Tag,
   TrendingUp,
+  Heart,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -25,7 +26,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import StockSearch from '@/components/stocks/StockSearch'
-import { getArticle, updateArticleStocks, createAlias, getStatsByStock } from '@/services/sentimentApi'
+import { getArticle, updateArticleStocks, createAlias, getStatsByStock, checkFavorite, addFavorite, removeFavorite } from '@/services/sentimentApi'
 import { useToastStore } from '@/store'
 
 function formatDate(timestamp: number): string {
@@ -101,6 +102,13 @@ export default function ArticleDetail() {
     enabled: !!contentId,
   })
 
+  // Check if article is favorited
+  const { data: favoriteStatus } = useQuery({
+    queryKey: ['favorite', contentId],
+    queryFn: () => checkFavorite(contentId!),
+    enabled: !!contentId,
+  })
+
   // Get stock stats for name lookup
   const { data: stockStats } = useQuery({
     queryKey: ['stats-by-stock'],
@@ -134,6 +142,19 @@ export default function ArticleDetail() {
     },
     onError: () => {
       addToast({ title: '添加别名失败', variant: 'destructive' })
+    },
+  })
+
+  const favoriteMutation = useMutation({
+    mutationFn: (isFavorited: boolean) =>
+      isFavorited ? removeFavorite(contentId!) : addFavorite(contentId!),
+    onSuccess: (_, wasFavorited) => {
+      queryClient.invalidateQueries({ queryKey: ['favorite', contentId] })
+      queryClient.invalidateQueries({ queryKey: ['favorites'] })
+      addToast({ title: wasFavorited ? '已取消收藏' : '已收藏' })
+    },
+    onError: () => {
+      addToast({ title: '操作失败', variant: 'destructive' })
     },
   })
 
@@ -194,16 +215,27 @@ export default function ArticleDetail() {
             <CardHeader>
               <div className="flex items-start justify-between gap-4">
                 <CardTitle className="text-xl leading-relaxed">{article.title}</CardTitle>
-                {article.content_url && (
-                  <a
-                    href={article.content_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="shrink-0 text-muted-foreground hover:text-foreground"
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => favoriteMutation.mutate(favoriteStatus?.is_favorited || false)}
+                    disabled={favoriteMutation.isPending}
+                    className={favoriteStatus?.is_favorited ? 'text-red-500 hover:text-red-600' : 'text-muted-foreground hover:text-red-500'}
                   >
-                    <ExternalLink className="h-5 w-5" />
-                  </a>
-                )}
+                    <Heart className={`h-5 w-5 ${favoriteStatus?.is_favorited ? 'fill-current' : ''}`} />
+                  </Button>
+                  {article.content_url && (
+                    <a
+                      href={article.content_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <ExternalLink className="h-5 w-5" />
+                    </a>
+                  )}
+                </div>
               </div>
 
               {/* Meta info */}
