@@ -27,7 +27,7 @@ router = APIRouter(prefix="/sentiment")
 @router.get("/articles", response_model=ZhihuContentListResponse)
 def get_articles(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=1000),
     stock_symbol: Optional[str] = None,
     author_id: Optional[str] = None,
     sort_by: str = Query("time", pattern="^(time|votes)$"),
