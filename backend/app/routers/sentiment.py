@@ -260,18 +260,36 @@ def get_creator_detail(user_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Creator not found")
 
     # Get article timeline data
-    from datetime import datetime
-    result = db.execute(text("""
-        SELECT
-            DATE(datetime(created_time, 'unixepoch')) as date,
-            COUNT(*) as count,
-            GROUP_CONCAT(content_id) as article_ids,
-            GROUP_CONCAT(title, '|||') as titles
-        FROM zhihu_content
-        WHERE author_id = :author_id
-        GROUP BY DATE(datetime(created_time, 'unixepoch'))
-        ORDER BY date
-    """), {"author_id": creator.user_id})
+    # Check if using PostgreSQL or SQLite
+    from app.database import DATABASE_URL
+    is_postgres = DATABASE_URL and DATABASE_URL.startswith("postgresql")
+
+    if is_postgres:
+        # PostgreSQL syntax
+        result = db.execute(text("""
+            SELECT
+                TO_CHAR(TO_TIMESTAMP(created_time), 'YYYY-MM-DD') as date,
+                COUNT(*) as count,
+                STRING_AGG(content_id, ',') as article_ids,
+                STRING_AGG(title, '|||') as titles
+            FROM zhihu_content
+            WHERE author_id = :author_id
+            GROUP BY TO_CHAR(TO_TIMESTAMP(created_time), 'YYYY-MM-DD')
+            ORDER BY date
+        """), {"author_id": creator.user_id})
+    else:
+        # SQLite syntax
+        result = db.execute(text("""
+            SELECT
+                DATE(datetime(created_time, 'unixepoch')) as date,
+                COUNT(*) as count,
+                GROUP_CONCAT(content_id) as article_ids,
+                GROUP_CONCAT(title, '|||') as titles
+            FROM zhihu_content
+            WHERE author_id = :author_id
+            GROUP BY DATE(datetime(created_time, 'unixepoch'))
+            ORDER BY date
+        """), {"author_id": creator.user_id})
 
     timeline = []
     total_articles = 0
