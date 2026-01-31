@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import {
@@ -14,6 +14,8 @@ import {
   Loader2,
   Plus,
   Trash2,
+  Download,
+  Upload,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -58,6 +60,7 @@ export default function Creators() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { addToast } = useToastStore()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [sortBy, setSortBy] = useState<SortBy>('fans')
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
@@ -65,6 +68,7 @@ export default function Creators() {
   const [newCreatorLink, setNewCreatorLink] = useState('')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [creatorToDelete, setCreatorToDelete] = useState<{ userId: string; nickname: string } | null>(null)
+  const [isImporting, setIsImporting] = useState(false)
 
   const { data: creators, isLoading } = useQuery({
     queryKey: ['creators'],
@@ -165,6 +169,89 @@ export default function Creators() {
     navigate(`/creators/${userId}`)
   }
 
+  // Export creators to JSON file
+  const handleExport = () => {
+    if (!creators || creators.length === 0) {
+      addToast({ title: '没有可导出的创作者', type: 'error' })
+      return
+    }
+
+    const exportData = creators.map((c) => ({
+      user_link: c.user_link,
+      user_nickname: c.user_nickname,
+      url_token: c.url_token,
+    }))
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `creators_${new Date().toISOString().split('T')[0]}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+
+    addToast({ title: `已导出 ${creators.length} 位创作者`, type: 'success' })
+  }
+
+  // Import creators from JSON file
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setIsImporting(true)
+    try {
+      const text = await file.text()
+      const importData = JSON.parse(text) as Array<{ user_link?: string; url_token?: string }>
+
+      // Get existing url_tokens for deduplication
+      const existingTokens = new Set(creators?.map((c) => c.url_token) || [])
+
+      // Filter out duplicates
+      const newCreators = importData.filter((item) => {
+        const token = item.url_token || item.user_link?.split('/').pop()
+        return token && !existingTokens.has(token)
+      })
+
+      if (newCreators.length === 0) {
+        addToast({ title: '所有创作者已存在，无需导入', type: 'info' })
+        setIsImporting(false)
+        return
+      }
+
+      // Add new creators one by one
+      let successCount = 0
+      let failCount = 0
+
+      for (const item of newCreators) {
+        const link = item.user_link || `https://www.zhihu.com/people/${item.url_token}`
+        try {
+          await addCreator(link)
+          successCount++
+        } catch {
+          failCount++
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['creators'] })
+
+      if (failCount === 0) {
+        addToast({ title: `成功导入 ${successCount} 位创作者`, type: 'success' })
+      } else {
+        addToast({ title: `导入完成: ${successCount} 成功, ${failCount} 失败`, type: 'warning' })
+      }
+    } catch (error) {
+      addToast({ title: '导入失败，请检查文件格式', type: 'error' })
+    } finally {
+      setIsImporting(false)
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -262,6 +349,43 @@ export default function Creators() {
           <Plus className="h-4 w-4 mr-1" />
           添加创作者
         </Button>
+
+        <div className="h-6 w-px bg-border" />
+
+        {/* Export button */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleExport}
+          disabled={!creators || creators.length === 0}
+          className="h-9"
+        >
+          <Download className="h-4 w-4 mr-1" />
+          导出
+        </Button>
+
+        {/* Import button */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isImporting}
+          className="h-9"
+        >
+          {isImporting ? (
+            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+          ) : (
+            <Upload className="h-4 w-4 mr-1" />
+          )}
+          导入
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json"
+          onChange={handleImport}
+          className="hidden"
+        />
       </div>
 
       {/* Loading state */}
