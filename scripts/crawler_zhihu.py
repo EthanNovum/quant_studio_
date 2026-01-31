@@ -127,6 +127,11 @@ def extract_text_from_html(html_content: str) -> str:
     return text.strip()
 
 
+class CrawlerStoppedError(Exception):
+    """Exception raised when crawler is stopped due to too many errors."""
+    pass
+
+
 class ZhihuCrawler:
     """Simplified Zhihu crawler."""
 
@@ -135,6 +140,8 @@ class ZhihuCrawler:
         self.headless = headless
         self.start_timestamp = None  # Filter: only save content after this time
         self.end_timestamp = None    # Filter: only save content before this time
+        self.consecutive_403_count = 0  # Track consecutive 403 errors
+        self.max_403_errors = 3  # Stop after this many consecutive 403s
         self.headers = {
             "accept": "*/*",
             "accept-language": "zh-CN,zh;q=0.9",
@@ -145,6 +152,31 @@ class ZhihuCrawler:
         }
         if cookies:
             self.headers["cookie"] = cookies
+
+    def _check_403_limit(self, status_code: int):
+        """Check if we've hit too many 403 errors."""
+        if status_code == 403:
+            self.consecutive_403_count += 1
+            print(f"[WARN] 403 Forbidden (count: {self.consecutive_403_count}/{self.max_403_errors})")
+            if self.consecutive_403_count >= self.max_403_errors:
+                error_msg = (
+                    f"\n[ERROR] ========================================\n"
+                    f"[ERROR] 连续 {self.max_403_errors} 次请求返回 403 Forbidden!\n"
+                    f"[ERROR] 可能的原因:\n"
+                    f"[ERROR]   1. Cookie 已过期，请更新 Cookie\n"
+                    f"[ERROR]   2. 请求频率过高，被知乎限制\n"
+                    f"[ERROR]   3. IP 被临时封禁\n"
+                    f"[ERROR] \n"
+                    f"[ERROR] 建议操作:\n"
+                    f"[ERROR]   1. 前往 设置页面 更新知乎 Cookie\n"
+                    f"[ERROR]   2. 等待一段时间后重试\n"
+                    f"[ERROR] ========================================\n"
+                )
+                print(error_msg)
+                raise CrawlerStoppedError("Too many 403 errors, please update cookies")
+        else:
+            # Reset counter on successful request
+            self.consecutive_403_count = 0
 
     async def request(self, url: str, params: Optional[Dict] = None, need_sign: bool = True) -> Dict:
         """Make HTTP request to Zhihu API with signing."""
@@ -164,11 +196,17 @@ class ZhihuCrawler:
                     headers.update(sign_headers)
 
                 response = await client.get(full_url, headers=headers, timeout=30)
+
+                # Check for 403 errors
+                self._check_403_limit(response.status_code)
+
                 if response.status_code == 200:
                     return response.json()
                 else:
                     print(f"[ERROR] Request failed: {response.status_code} - {full_url}")
                     return {}
+        except CrawlerStoppedError:
+            raise  # Re-raise to stop the crawler
         except Exception as e:
             print(f"[ERROR] Request error: {e}")
             return {}
@@ -185,11 +223,17 @@ class ZhihuCrawler:
                     headers.update(sign_headers)
 
                 response = await client.get(url, headers=headers, timeout=30)
+
+                # Check for 403 errors
+                self._check_403_limit(response.status_code)
+
                 if response.status_code == 200:
                     return response.text
                 else:
                     print(f"[ERROR] Request failed: {response.status_code}")
                     return ""
+        except CrawlerStoppedError:
+            raise  # Re-raise to stop the crawler
         except Exception as e:
             print(f"[ERROR] Request error: {e}")
             return ""
