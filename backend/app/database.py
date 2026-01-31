@@ -6,6 +6,9 @@ from sqlalchemy.pool import QueuePool
 
 from app.config import settings
 
+# Export DATABASE_URL for other modules to check database type
+DATABASE_URL = settings.get_database_url()
+
 
 class Base(DeclarativeBase):
     """Base class for all ORM models."""
