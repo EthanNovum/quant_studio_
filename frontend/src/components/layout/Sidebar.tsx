@@ -30,7 +30,7 @@ const navItems = [
   { path: '/creators', icon: User, label: '创作者' },
   { path: '/sentiment', icon: Newspaper, label: '舆情' },
   { path: '/ai-settings', icon: Zap, label: 'AI设置' },
-  { path: '/settings', icon: Settings, label: '设置' },
+  { path: '/settings', icon: Settings, label: '创作者设置' },
 ]
 
 export default function Sidebar() {

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Plus, RefreshCw, Play, Square, Search, Calendar, Database, Users, Loader2, Key, Eye, EyeOff, Info, CheckCircle, XCircle, ExternalLink } from 'lucide-react'
+import { Plus, RefreshCw, Play, Square, Search, Calendar, Database, Users, Loader2, Key, Eye, EyeOff, Info, CheckCircle, XCircle, ExternalLink, Upload } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -169,11 +169,59 @@ export default function Settings() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">设置</h1>
+        <h1 className="text-2xl font-bold">创作者设置</h1>
         <p className="text-sm text-muted-foreground">管理爬虫配置、股票别名和数据同步</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
+        {/* Data Upload Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              本地数据上传
+            </CardTitle>
+            <CardDescription>从本地 SQLite 数据库上传文章数据到服务器</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                支持断点续传、分批上传、自动去重
+              </div>
+              <Link to="/data-upload">
+                <Button variant="outline">
+                  上传数据
+                  <ExternalLink className="h-4 w-4 ml-2" />
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Creators Management - Link to dedicated page */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              知乎创作者监控
+            </CardTitle>
+            <CardDescription>管理要爬取的知乎用户</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                当前监控 {creators?.filter(c => c.is_active === 1).length || 0} 位活跃创作者，共 {creators?.length || 0} 位
+              </div>
+              <Link to="/creators">
+                <Button variant="outline">
+                  管理创作者
+                  <ExternalLink className="h-4 w-4 ml-2" />
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Sync Center */}
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -491,30 +539,6 @@ export default function Settings() {
               <div className="max-h-48 overflow-auto">
                 <pre className="whitespace-pre-wrap">{syncStatus?.log_output || '暂无日志'}</pre>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Creators Management - Link to dedicated page */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              知乎创作者监控
-            </CardTitle>
-            <CardDescription>管理要爬取的知乎用户</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
-                当前监控 {creators?.filter(c => c.is_active === 1).length || 0} 位活跃创作者，共 {creators?.length || 0} 位
-              </div>
-              <Link to="/creators">
-                <Button variant="outline">
-                  管理创作者
-                  <ExternalLink className="h-4 w-4 ml-2" />
-                </Button>
-              </Link>
             </div>
           </CardContent>
         </Card>
