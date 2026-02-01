@@ -19,6 +19,7 @@ import Settings from '@/pages/Settings'
 import DailyReview from '@/pages/DailyReview'
 import AISettings from '@/pages/AISettings'
 import DarePlay from '@/pages/DarePlay'
+import DataUpload from '@/pages/DataUpload'
 import LoginPage from '@/pages/LoginPage'
 import { authApi } from '@/services/authApi'
 
@@ -68,6 +69,7 @@ function App() {
           <Route path="/dare-play" element={<DarePlay />} />
           <Route path="/ai-settings" element={<AISettings />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/data-upload" element={<DataUpload />} />
         </Routes>
       </MainLayout>
       <Toaster />

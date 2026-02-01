@@ -7,15 +7,17 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Header
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import CrawlerConfig, ZhihuContent
+from app.models import CrawlerConfig, ZhihuContent, ZhihuCreator
 from app.schemas.zhihu import CrawlerConfigResponse, CrawlerConfigUpdate, SyncStatus, ArticleTimeRange, CrawlTimeRangeRequest
+from app.config import settings
 
 router = APIRouter(prefix="/sync")
 
@@ -333,3 +335,192 @@ def test_cookies(db: Session = Depends(get_db)):
         return {"valid": False, "message": "请求超时，请检查网络连接"}
     except Exception as e:
         return {"valid": False, "message": f"验证出错: {str(e)}"}
+
+
+# ========== Remote Data Upload API ==========
+
+class ArticleUploadItem(BaseModel):
+    """单篇文章上传数据."""
+    content_id: str
+    content_type: str
+    title: str
+    content_text: Optional[str] = None
+    content_url: Optional[str] = None
+    created_time: int = 0
+    updated_time: int = 0
+    voteup_count: int = 0
+    comment_count: int = 0
+    author_id: Optional[str] = None
+    author_name: Optional[str] = None
+    author_avatar: Optional[str] = None
+
+
+class CreatorUploadItem(BaseModel):
+    """单个创作者上传数据."""
+    user_id: str
+    url_token: str
+    user_nickname: str
+    user_avatar: Optional[str] = None
+    user_link: Optional[str] = None
+    gender: Optional[str] = None
+    fans: int = 0
+    follows: int = 0
+    answer_count: int = 0
+    article_count: int = 0
+    voteup_count: int = 0
+
+
+class UploadBatchRequest(BaseModel):
+    """批量上传请求."""
+    articles: List[ArticleUploadItem] = []
+    creators: List[CreatorUploadItem] = []
+    batch_id: Optional[str] = None  # 用于断点续传
+
+
+class UploadResponse(BaseModel):
+    """上传响应."""
+    success: bool
+    articles_inserted: int = 0
+    articles_updated: int = 0
+    creators_inserted: int = 0
+    creators_updated: int = 0
+    batch_id: Optional[str] = None
+    message: str = ""
+
+
+def verify_upload_token(x_upload_token: Optional[str] = Header(None)):
+    """验证上传令牌 (使用 AUTH_PASSWORD)."""
+    if not x_upload_token:
+        raise HTTPException(status_code=401, detail="Missing X-Upload-Token header")
+    if x_upload_token != settings.auth_password:
+        raise HTTPException(status_code=403, detail="Invalid upload token")
+    return True
+
+
+@router.post("/upload", response_model=UploadResponse)
+def upload_data(
+    data: UploadBatchRequest,
+    db: Session = Depends(get_db),
+    _: bool = Depends(verify_upload_token),
+):
+    """
+    批量上传文章和创作者数据.
+
+    认证: 需要在 Header 中传入 X-Upload-Token (值为服务器的 AUTH_PASSWORD)
+
+    去重: 使用 UPSERT，重复的 content_id/user_id 会更新而非报错
+    """
+    articles_inserted = 0
+    articles_updated = 0
+    creators_inserted = 0
+    creators_updated = 0
+
+    try:
+        # 导入文章
+        for item in data.articles:
+            existing = db.query(ZhihuContent).filter(
+                ZhihuContent.content_id == item.content_id
+            ).first()
+
+            if existing:
+                # 更新
+                existing.title = item.title
+                existing.content_text = item.content_text
+                existing.content_url = item.content_url
+                existing.voteup_count = item.voteup_count
+                existing.comment_count = item.comment_count
+                existing.updated_time = item.updated_time
+                articles_updated += 1
+            else:
+                # 插入
+                new_article = ZhihuContent(
+                    content_id=item.content_id,
+                    content_type=item.content_type,
+                    title=item.title,
+                    content_text=item.content_text,
+                    content_url=item.content_url,
+                    created_time=item.created_time,
+                    updated_time=item.updated_time,
+                    voteup_count=item.voteup_count,
+                    comment_count=item.comment_count,
+                    author_id=item.author_id,
+                    author_name=item.author_name,
+                    author_avatar=item.author_avatar,
+                    is_tagged=0,
+                )
+                db.add(new_article)
+                articles_inserted += 1
+
+        # 导入创作者 (使用 url_token 去重)
+        for item in data.creators:
+            # 优先用 url_token 查找，避免同一用户因 user_id 不同而重复
+            existing = db.query(ZhihuCreator).filter(
+                ZhihuCreator.url_token == item.url_token
+            ).first()
+
+            if existing:
+                # 更新（同时更新 user_id，因为爬虫获取的是真实 ID）
+                if item.user_id and item.user_id != item.url_token:
+                    existing.user_id = item.user_id  # 更新为真实 user_id
+                existing.user_nickname = item.user_nickname
+                existing.user_avatar = item.user_avatar
+                existing.user_link = item.user_link
+                existing.fans = item.fans
+                existing.follows = item.follows
+                existing.answer_count = item.answer_count
+                existing.article_count = item.article_count
+                existing.voteup_count = item.voteup_count
+                creators_updated += 1
+            else:
+                # 插入
+                new_creator = ZhihuCreator(
+                    user_id=item.user_id,
+                    url_token=item.url_token,
+                    user_nickname=item.user_nickname,
+                    user_avatar=item.user_avatar,
+                    user_link=item.user_link,
+                    gender=item.gender,
+                    fans=item.fans,
+                    follows=item.follows,
+                    answer_count=item.answer_count,
+                    article_count=item.article_count,
+                    voteup_count=item.voteup_count,
+                    is_active=1,
+                )
+                db.add(new_creator)
+                creators_inserted += 1
+
+        db.commit()
+
+        return UploadResponse(
+            success=True,
+            articles_inserted=articles_inserted,
+            articles_updated=articles_updated,
+            creators_inserted=creators_inserted,
+            creators_updated=creators_updated,
+            batch_id=data.batch_id,
+            message=f"上传成功: 文章 +{articles_inserted}/~{articles_updated}, 创作者 +{creators_inserted}/~{creators_updated}",
+        )
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"上传失败: {str(e)}")
+
+
+@router.get("/upload/status")
+def get_upload_status(db: Session = Depends(get_db)):
+    """获取服务器当前数据统计，用于断点续传."""
+    from sqlalchemy import func
+
+    article_count = db.query(func.count(ZhihuContent.content_id)).scalar() or 0
+    creator_count = db.query(func.count(ZhihuCreator.user_id)).scalar() or 0
+
+    # 获取已有的 content_id 列表 (用于客户端判断跳过)
+    existing_ids = db.query(ZhihuContent.content_id).all()
+    existing_content_ids = [row[0] for row in existing_ids]
+
+    return {
+        "article_count": article_count,
+        "creator_count": creator_count,
+        "existing_content_ids": existing_content_ids,
+    }

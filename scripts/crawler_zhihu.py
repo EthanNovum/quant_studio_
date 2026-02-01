@@ -361,8 +361,13 @@ class ZhihuCrawler:
         }
         return await self.request(url, params)
 
-    async def crawl_creator(self, creator_url: str) -> Dict:
-        """Crawl a single creator's content."""
+    async def crawl_creator(self, creator_url: str, incremental: bool = True) -> Dict:
+        """Crawl a single creator's content.
+
+        Args:
+            creator_url: Creator's Zhihu profile URL
+            incremental: If True, only crawl content newer than what's in database
+        """
         # Extract url_token from URL
         url_token = creator_url.rstrip("/").split("/")[-1]
         print(f"\n[INFO] Crawling creator: {url_token}")
@@ -382,7 +387,21 @@ class ZhihuCrawler:
         # Save creator to DB
         self.save_creator(creator)
 
+        # 增量更新：获取数据库中该创作者最新文章的时间
+        latest_time_in_db = None
+        db_content_count = 0
+        if incremental and not self.start_timestamp:
+            latest_time_in_db = get_latest_content_time_for_creator(creator["user_id"])
+            db_content_count = get_content_count_for_creator(creator["user_id"])
+            if latest_time_in_db:
+                latest_date = datetime.fromtimestamp(latest_time_in_db).strftime("%Y-%m-%d %H:%M")
+                print(f"[INFO] 增量模式: 数据库已有 {db_content_count} 篇, 最新时间 {latest_date}")
+            else:
+                print(f"[INFO] 全量模式: 数据库暂无该创作者的文章")
+
         contents = []
+        new_count = 0
+        skipped_count = 0
 
         # Crawl answers
         print(f"[INFO] Crawling answers...")
@@ -396,17 +415,24 @@ class ZhihuCrawler:
             for item in res.get("data", []):
                 content = self.extract_content(item, "answer")
                 if content:
-                    # Apply time filter
                     created_time = content.get("created_time", 0)
+
+                    # 增量检查：如果文章时间早于数据库最新时间，停止爬取
+                    if incremental and latest_time_in_db and created_time <= latest_time_in_db:
+                        skipped_count += 1
+                        should_stop = True
+                        continue
+
+                    # Apply time filter (命令行参数)
                     if self.start_timestamp and created_time < self.start_timestamp:
-                        # Content is older than start date, stop crawling (since sorted by created)
                         should_stop = True
                         continue
                     if self.end_timestamp and created_time > self.end_timestamp:
-                        # Content is newer than end date, skip it
                         continue
+
                     contents.append(content)
                     self.save_content(content)
+                    new_count += 1
 
             paging = res.get("paging", {})
             if paging.get("is_end", True) or should_stop:
@@ -415,7 +441,7 @@ class ZhihuCrawler:
             offset += 20
             await asyncio.sleep(CRAWL_INTERVAL)
 
-        print(f"[INFO] Crawled {len([c for c in contents if c['content_type'] == 'answer'])} answers")
+        print(f"[INFO] Crawled {len([c for c in contents if c['content_type'] == 'answer'])} new answers")
 
         # Crawl articles
         print(f"[INFO] Crawling articles...")
@@ -429,17 +455,24 @@ class ZhihuCrawler:
             for item in res.get("data", []):
                 content = self.extract_content(item, "article")
                 if content:
-                    # Apply time filter
                     created_time = content.get("created_time", 0)
+
+                    # 增量检查：如果文章时间早于数据库最新时间，停止爬取
+                    if incremental and latest_time_in_db and created_time <= latest_time_in_db:
+                        skipped_count += 1
+                        should_stop = True
+                        continue
+
+                    # Apply time filter
                     if self.start_timestamp and created_time < self.start_timestamp:
-                        # Content is older than start date, stop crawling
                         should_stop = True
                         continue
                     if self.end_timestamp and created_time > self.end_timestamp:
-                        # Content is newer than end date, skip it
                         continue
+
                     contents.append(content)
                     self.save_content(content)
+                    new_count += 1
 
             paging = res.get("paging", {})
             if paging.get("is_end", True) or should_stop:
@@ -448,7 +481,10 @@ class ZhihuCrawler:
             offset += 20
             await asyncio.sleep(CRAWL_INTERVAL)
 
-        print(f"[INFO] Crawled {len([c for c in contents if c['content_type'] == 'article'])} articles")
+        print(f"[INFO] Crawled {len([c for c in contents if c['content_type'] == 'article'])} new articles")
+
+        if incremental and latest_time_in_db:
+            print(f"[INFO] 增量同步完成: 新增 {new_count} 篇, 跳过已有 {skipped_count} 篇")
 
         # Update last_crawled_at
         self.update_creator_crawled_time(creator["user_id"])
@@ -654,6 +690,54 @@ def get_cookies_from_db() -> str:
         conn.close()
 
 
+def get_latest_content_time_for_creator(author_id: str) -> Optional[int]:
+    """获取某个创作者在数据库中最新文章的时间戳."""
+    if not author_id:
+        return None
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        if is_postgres():
+            cursor.execute("""
+                SELECT MAX(created_time) FROM zhihu_content WHERE author_id = %s
+            """, (author_id,))
+        else:
+            cursor.execute("""
+                SELECT MAX(created_time) FROM zhihu_content WHERE author_id = ?
+            """, (author_id,))
+        row = cursor.fetchone()
+        return row[0] if row and row[0] else None
+    except Exception as e:
+        print(f"[ERROR] Get latest content time failed: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def get_content_count_for_creator(author_id: str) -> int:
+    """获取某个创作者在数据库中的文章数量."""
+    if not author_id:
+        return 0
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        if is_postgres():
+            cursor.execute("""
+                SELECT COUNT(*) FROM zhihu_content WHERE author_id = %s
+            """, (author_id,))
+        else:
+            cursor.execute("""
+                SELECT COUNT(*) FROM zhihu_content WHERE author_id = ?
+            """, (author_id,))
+        row = cursor.fetchone()
+        return row[0] if row else 0
+    except Exception as e:
+        print(f"[ERROR] Get content count failed: {e}")
+        return 0
+    finally:
+        conn.close()
+
+
 async def main():
     parser = argparse.ArgumentParser(description="Zhihu Crawler for DangInvest")
     parser.add_argument("--creators", type=str, help="Comma-separated creator URLs")
@@ -662,7 +746,11 @@ async def main():
     parser.add_argument("--start-date", type=str, help="Start date filter (YYYY-MM-DD)")
     parser.add_argument("--end-date", type=str, help="End date filter (YYYY-MM-DD)")
     parser.add_argument("--creator-ids", type=str, help="Comma-separated creator user_ids to crawl")
+    parser.add_argument("--full", action="store_true", help="Full sync mode (ignore incremental, crawl all)")
     args = parser.parse_args()
+
+    # 增量模式：默认开启，除非指定 --full 或 --start-date
+    incremental = not args.full
 
     # Parse date filters
     start_timestamp = None
@@ -701,6 +789,7 @@ async def main():
 
     print(f"[INFO] Starting crawler for {len(creator_urls)} creators")
     print(f"[INFO] Database: {DATABASE_URL if is_postgres() else DB_PATH}")
+    print(f"[INFO] Mode: {'全量同步' if not incremental else '增量同步 (只爬取新文章)'}")
 
     crawler = ZhihuCrawler(cookies=cookies, headless=args.headless)
     crawler.start_timestamp = start_timestamp
@@ -708,11 +797,11 @@ async def main():
 
     total_contents = 0
     for url in creator_urls:
-        result = await crawler.crawl_creator(url)
+        result = await crawler.crawl_creator(url, incremental=incremental)
         total_contents += len(result.get("contents", []))
         await asyncio.sleep(CRAWL_INTERVAL)
 
-    print(f"\n[INFO] Crawling complete! Total contents: {total_contents}")
+    print(f"\n[INFO] Crawling complete! Total new contents: {total_contents}")
     print("[INFO] Run 'python scripts/tag_articles.py' to tag articles with stock keywords")
 
 
