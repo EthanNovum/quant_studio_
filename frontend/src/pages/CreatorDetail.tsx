@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
   ExternalLink,
@@ -43,10 +43,10 @@ export default function CreatorDetail() {
   const queryClient = useQueryClient()
   const { addToast } = useToastStore()
 
-  const [page, setPage] = useState(1)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [selectedArticleIds, setSelectedArticleIds] = useState<string[]>([])
   const pageSize = 20
+  const loadMoreRef = useRef<HTMLDivElement>(null)
 
   const { data: creator, isLoading: creatorLoading } = useQuery({
     queryKey: ['creator-detail', userId],
@@ -54,16 +54,27 @@ export default function CreatorDetail() {
     enabled: !!userId,
   })
 
-  const { data: articlesData, isLoading: articlesLoading } = useQuery({
-    queryKey: ['creator-articles', userId, page, pageSize],
-    queryFn: () =>
+  const {
+    data: articlesData,
+    isLoading: articlesLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['creator-articles-infinite', userId],
+    queryFn: ({ pageParam = 1 }) =>
       getArticles({
         author_id: userId,
-        page,
+        page: pageParam,
         page_size: pageSize,
         sort_by: 'time',
         sort_order: 'desc',
       }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => {
+      const totalLoaded = allPages.length * pageSize
+      return totalLoaded < lastPage.total ? allPages.length + 1 : undefined
+    },
     enabled: !!userId && !selectedDate,
   })
 
@@ -80,6 +91,30 @@ export default function CreatorDetail() {
       }),
     enabled: !!userId && !!selectedDate,
   })
+
+  // Intersection Observer for infinite scroll
+  const handleObserver = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      const [target] = entries
+      if (target.isIntersecting && hasNextPage && !isFetchingNextPage && !selectedDate) {
+        fetchNextPage()
+      }
+    },
+    [fetchNextPage, hasNextPage, isFetchingNextPage, selectedDate]
+  )
+
+  useEffect(() => {
+    const element = loadMoreRef.current
+    if (!element) return
+
+    const observer = new IntersectionObserver(handleObserver, {
+      threshold: 0.1,
+      rootMargin: '100px',
+    })
+
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [handleObserver])
 
   const toggleMutation = useMutation({
     mutationFn: toggleCreator,
@@ -100,12 +135,16 @@ export default function CreatorDetail() {
     document.getElementById('articles-section')?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  // Flatten all pages into a single array for infinite scroll
+  const allInfiniteArticles = articlesData?.pages.flatMap((page) => page.items) ?? []
+  const totalArticles = articlesData?.pages[0]?.total ?? 0
+
   // Filter articles by selected date if any
   const filteredArticles = selectedDate
     ? allArticlesData?.items.filter((article) =>
         selectedArticleIds.includes(article.content_id)
       )
-    : articlesData?.items
+    : allInfiniteArticles
 
   const isLoadingArticles = selectedDate ? allArticlesLoading : articlesLoading
 
@@ -127,8 +166,6 @@ export default function CreatorDetail() {
       </div>
     )
   }
-
-  const totalPages = articlesData ? Math.ceil(articlesData.total / pageSize) : 0
 
   return (
     <div className="space-y-6">
@@ -268,9 +305,9 @@ export default function CreatorDetail() {
               <FileText className="h-5 w-5" />
               文章列表
             </span>
-            {articlesData && (
+            {totalArticles > 0 && (
               <span className="text-sm font-normal text-muted-foreground">
-                共 {articlesData.total} 篇
+                共 {totalArticles} 篇
               </span>
             )}
           </CardTitle>
@@ -331,28 +368,16 @@ export default function CreatorDetail() {
                 </Link>
               ))}
 
-              {/* Pagination */}
-              {!selectedDate && totalPages > 1 && (
-                <div className="flex items-center justify-center gap-2 pt-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                  >
-                    上一页
-                  </Button>
-                  <span className="text-sm text-muted-foreground">
-                    {page} / {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={page === totalPages}
-                  >
-                    下一页
-                  </Button>
+              {/* Infinite scroll loading trigger */}
+              {!selectedDate && (
+                <div ref={loadMoreRef} className="flex items-center justify-center py-4">
+                  {isFetchingNextPage ? (
+                    <div className="text-muted-foreground">加载中...</div>
+                  ) : hasNextPage ? (
+                    <div className="text-muted-foreground text-sm">向下滚动加载更多</div>
+                  ) : allInfiniteArticles.length > 0 ? (
+                    <div className="text-muted-foreground text-sm">已加载全部文章</div>
+                  ) : null}
                 </div>
               )}
             </div>
