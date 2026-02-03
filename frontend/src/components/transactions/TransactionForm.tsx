@@ -8,8 +8,11 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import StockSearch from '@/components/stocks/StockSearch'
+import NaturalLanguageInput from '@/components/transactions/NaturalLanguageInput'
 import { createTrade, getStockPrice, getTrades } from '@/services/transactionApi'
+import { searchStocks } from '@/services/stockApi'
 import { useToastStore } from '@/store'
+import type { ParsedTrade } from '@/utils/parseNaturalLanguageTrade'
 
 export interface FillFormData {
   code: string
@@ -120,6 +123,58 @@ export default function TransactionForm({ fillData, onFillConsumed }: Transactio
     addToast({ title: '已复制上一条交易记录' })
   }
 
+  const handleNaturalLanguageParsed = async (parsed: ParsedTrade) => {
+    // 填入解析到的操作类型
+    if (parsed.action) {
+      setAction(parsed.action)
+    }
+
+    // 填入解析到的日期
+    if (parsed.date) {
+      setDate(parsed.date)
+    }
+
+    // 填入解析到的价格
+    if (parsed.price !== undefined) {
+      setPrice(parsed.price.toString())
+    }
+
+    // 填入解析到的数量
+    if (parsed.quantity !== undefined) {
+      setQuantity(parsed.quantity.toString())
+    }
+
+    // 如果解析到股票名称，尝试搜索匹配的股票
+    if (parsed.stockName) {
+      try {
+        const results = await searchStocks(parsed.stockName)
+        if (results.length > 0) {
+          // 使用第一个匹配结果
+          setSelectedStock({ code: results[0].code, name: results[0].name })
+          addToast({ title: `已匹配股票: ${results[0].name}` })
+        } else {
+          addToast({ title: `未找到匹配股票: ${parsed.stockName}`, variant: 'destructive' })
+        }
+      } catch {
+        addToast({ title: '搜索股票失败', variant: 'destructive' })
+      }
+    }
+
+    // 提示用户解析结果
+    const parsedFields = []
+    if (parsed.action) parsedFields.push('操作')
+    if (parsed.date) parsedFields.push('日期')
+    if (parsed.price !== undefined) parsedFields.push('价格')
+    if (parsed.quantity !== undefined) parsedFields.push('数量')
+    if (parsed.stockName) parsedFields.push('股票')
+
+    if (parsedFields.length > 0) {
+      addToast({ title: `已解析: ${parsedFields.join('、')}` })
+    } else {
+      addToast({ title: '未能解析出有效信息', variant: 'destructive' })
+    }
+  }
+
   return (
     <Card>
       <CardHeader className="pb-3 sm:pb-6 flex flex-row items-center justify-between">
@@ -137,6 +192,18 @@ export default function TransactionForm({ fillData, onFillConsumed }: Transactio
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
+          {/* 自然语言输入 */}
+          <NaturalLanguageInput onParsed={handleNaturalLanguageParsed} />
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">或手动填写</span>
+            </div>
+          </div>
+
           {/* Mobile: single column, Tablet+: two columns */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="sm:col-span-2 space-y-2">
