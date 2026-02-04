@@ -5,6 +5,7 @@
  */
 
 export interface ParsedTrade {
+  stockCode?: string
   stockName?: string
   action?: 'BUY' | 'SELL' | 'DIVIDEND' | 'BONUS'
   price?: number
@@ -206,6 +207,52 @@ function parseStockName(text: string): string | undefined {
   return undefined
 }
 
+// 解析股票代码 (优先使用)
+function parseStockCode(text: string): string | undefined {
+  // 匹配常见股票代码格式:
+  // A股: 6位数字 (600xxx, 000xxx, 300xxx, 002xxx, 688xxx, 003xxx)
+  // 港股: 5位数字 (00700, 09988) 或带.HK后缀
+  // 基金/ETF: 6位数字 (159xxx, 510xxx, 513xxx)
+
+  const codePatterns = [
+    // 带前缀的代码: 代码159509, 代码:159509, 股票代码159509
+    /(?:代码|股票代码|基金代码|证券代码)[：:\s]*(\d{5,6})/,
+    // 带后缀的代码: 159509代码
+    /(\d{6})(?:代码)/,
+    // 独立的6位数字代码 (A股/基金)
+    /(?:^|[,，。\s])(\d{6})(?:[,，。\s]|$)/,
+    // 独立的6位数字代码 (更宽松匹配)
+    /[^\d](\d{6})[^\d]/,
+    // 5位港股代码
+    /(?:^|[,，。\s])(\d{5})(?:\.HK)?(?:[,，。\s]|$)/i,
+  ]
+
+  for (const pattern of codePatterns) {
+    const match = text.match(pattern)
+    if (match && match[1]) {
+      const code = match[1]
+      // 验证是否为有效的股票代码格式
+      if (code.length === 6) {
+        // A股/基金代码验证
+        const prefix = code.substring(0, 3)
+        const validPrefixes = ['600', '601', '603', '605', '000', '001', '002', '003', '300', '301', '688', '689', '159', '510', '511', '512', '513', '515', '516', '517', '518', '560', '561', '562', '563', '588']
+        if (validPrefixes.some(p => code.startsWith(p))) {
+          return code
+        }
+        // 如果不是标准前缀但明确标注了"代码"，也接受
+        if (/代码/.test(text)) {
+          return code
+        }
+      } else if (code.length === 5) {
+        // 港股代码
+        return code
+      }
+    }
+  }
+
+  return undefined
+}
+
 // 主解析函数
 export function parseNaturalLanguageTrade(text: string): ParsedTrade {
   const result: ParsedTrade = {}
@@ -214,6 +261,7 @@ export function parseNaturalLanguageTrade(text: string): ParsedTrade {
   result.action = parseAction(text)
   result.price = parsePrice(text)
   result.quantity = parseQuantity(text)
+  result.stockCode = parseStockCode(text)
   result.stockName = parseStockName(text)
 
   return result

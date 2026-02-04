@@ -144,14 +144,25 @@ export default function TransactionForm({ fillData, onFillConsumed }: Transactio
       setQuantity(parsed.quantity.toString())
     }
 
-    // 如果解析到股票名称，尝试搜索匹配的股票
-    if (parsed.stockName) {
+    // 优先使用股票代码，其次使用股票名称搜索
+    if (parsed.stockCode) {
+      try {
+        const results = await searchStocks(parsed.stockCode)
+        if (results.length > 0) {
+          setSelectedStock({ code: results[0].code, name: results[0].name })
+          addToast({ title: `已匹配: ${results[0].code} ${results[0].name}` })
+        } else {
+          addToast({ title: `未找到股票代码: ${parsed.stockCode}`, variant: 'destructive' })
+        }
+      } catch {
+        addToast({ title: '搜索股票失败', variant: 'destructive' })
+      }
+    } else if (parsed.stockName) {
       try {
         const results = await searchStocks(parsed.stockName)
         if (results.length > 0) {
-          // 使用第一个匹配结果
           setSelectedStock({ code: results[0].code, name: results[0].name })
-          addToast({ title: `已匹配股票: ${results[0].name}` })
+          addToast({ title: `已匹配: ${results[0].name}` })
         } else {
           addToast({ title: `未找到匹配股票: ${parsed.stockName}`, variant: 'destructive' })
         }
@@ -166,7 +177,8 @@ export default function TransactionForm({ fillData, onFillConsumed }: Transactio
     if (parsed.date) parsedFields.push('日期')
     if (parsed.price !== undefined) parsedFields.push('价格')
     if (parsed.quantity !== undefined) parsedFields.push('数量')
-    if (parsed.stockName) parsedFields.push('股票')
+    if (parsed.stockCode) parsedFields.push('代码')
+    else if (parsed.stockName) parsedFields.push('股票')
 
     if (parsedFields.length > 0) {
       addToast({ title: `已解析: ${parsedFields.join('、')}` })
